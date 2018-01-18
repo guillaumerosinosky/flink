@@ -1,8 +1,10 @@
 package org.apache.flink.streaming.api.functions;
 
 import com.google.common.collect.Iterables;
+import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -14,55 +16,18 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
+import static org.junit.Assert.assertFalse;
+
+// TODO: Test failure (checkpoint, create new testharness and restart)
+// TODO: Test state growth
+// TODO: Add setup to testharness
 @RunWith(Parameterized.class)
 public class TimeBoundedStreamJoinTest {
-
-//	@Test
-	public void continousInput() throws Exception {
-
-		long lowerBound = -2;
-		boolean lowerBoundInclusive = true;
-
-		long upperBound = -1;
-		boolean upperBoundInclusive = true;
-
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
-
-		// TODO: Add setup
-		// WindowOperatorTest
-		testHarness.open();
-
-		ScheduledExecutorService service = Executors.newScheduledThreadPool(1);
-
-		final AtomicInteger count = new AtomicInteger();
-
-		Future f = service.scheduleAtFixedRate(() -> {
-			try {
-				testHarness.processElement1(createStreamRecord(count.get(), "lhs"));
-				testHarness.processWatermark1(new Watermark(count.get()));
-
-				testHarness.processElement2(createStreamRecord(count.get(), "rhs"));
-				testHarness.processWatermark2(new Watermark(count.get()));
-
-				count.getAndIncrement();
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		}, 0, 1, TimeUnit.SECONDS);
-
-		f.get();
-	}
-
 
 	private final boolean lhsFasterThanRhs;
 
@@ -284,6 +249,136 @@ public class TimeBoundedStreamJoinTest {
 
 		testHarness.close();
 	}
+
+	@Test
+	public void stateGetsCleanedWhenNotNeeded() throws Exception {
+
+		long lowerBound = 1;
+		boolean lowerBoundInclusive = true;
+
+		long upperBound = 2;
+		boolean upperBoundInclusive = true;
+
+		TimeBoundedStreamJoin<TestElem, TestElem> joinFunc = new TimeBoundedStreamJoin<>(
+			lowerBound,
+			upperBound,
+			lowerBoundInclusive,
+			upperBoundInclusive
+		);
+
+		long delay = joinFunc.getWatermarkDelay();
+
+		KeyedCoProcessOperatorWithWatermarkDelay<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> operator
+			= new KeyedCoProcessOperatorWithWatermarkDelay<>(joinFunc, delay);
+
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> testHarness
+			= new KeyedTwoInputStreamOperatorTestHarness<>(
+			operator,
+			(elem) -> elem.key, // key
+			(elem) -> elem.key, // key
+			TypeInformation.of(String.class)
+		);
+
+		// TODO: Remove me
+		System.out.println("Watermark delay: " + joinFunc.getWatermarkDelay());
+
+		testHarness.setup();
+		testHarness.open();
+
+		testHarness.processElement1(createStreamRecord(1, "lhs"));
+		testHarness.processWatermark1(new Watermark(1));
+
+		assertContainsOnly(joinFunc.getLhs(), 1);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement2(createStreamRecord(1, "rhs"));
+		testHarness.processWatermark2(new Watermark(1));
+
+		assertContainsOnly(joinFunc.getLhs(), 1);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement1(createStreamRecord(2, "lhs"));
+		testHarness.processWatermark1(new Watermark(2));
+
+		assertContainsOnly(joinFunc.getLhs(), 1, 2);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement2(createStreamRecord(2, "rhs"));
+		testHarness.processWatermark2(new Watermark(2));
+
+		assertContainsOnly(joinFunc.getLhs(), 1, 2);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement1(createStreamRecord(3, "lhs"));
+		testHarness.processWatermark1(new Watermark(3));
+
+		assertContainsOnly(joinFunc.getLhs(), 1, 2, 3);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement2(createStreamRecord(3, "rhs"));
+		testHarness.processWatermark2(new Watermark(3));
+
+		assertContainsOnly(joinFunc.getLhs(), 2, 3);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement1(createStreamRecord(4, "lhs"));
+		testHarness.processWatermark1(new Watermark(4));
+
+		assertContainsOnly(joinFunc.getLhs(), 2, 3, 4);
+		assertEmpty(joinFunc.getRhs());
+
+		testHarness.processElement2(createStreamRecord(4, "rhs"));
+		testHarness.processWatermark2(new Watermark(4));
+
+		assertContainsOnly(joinFunc.getLhs(), 3, 4);
+		assertEmpty(joinFunc.getRhs());
+	}
+
+	private void assertEmpty(MapState<Long, ?> state) throws Exception {
+		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
+		if (!stateIsEmpty) {
+			for (Map.Entry x : state.entries()) {
+				System.out.print(x.getKey() + " -> " + x.getValue());
+			}
+		}
+		Assert.assertTrue("state not empty", stateIsEmpty);
+	}
+
+	private void assertContainsOnly(MapState<Long, ?> state, long... ts) throws Exception {
+		for (long t : ts) {
+			Assert.assertTrue("key not found in state", state.contains(t));
+		}
+
+		Assert.assertEquals("too many objects in state", ts.length, Iterables.size(state.keys()));
+	}
+
+	private void noElementCachedEarlierThan(long watermark,
+											MapState<Long, List<Tuple3<TestElem, Long, Boolean>>> lhs,
+											MapState<Long, List<Tuple3<TestElem, Long, Boolean>>> rhs) throws Exception {
+
+		for (long bucket : lhs.keys()) {
+			if (bucket <= watermark) {
+				System.out.println(bucket + " " + watermark);
+			}
+			assertFalse("bucket should not be smaller or equal to watermark", bucket <= watermark);
+		}
+
+		for (long bucket : rhs.keys()) {
+			if (bucket <= watermark) {
+				System.out.println(bucket + " " + watermark);
+			}
+			assertFalse("bucket should not be smaller or equal to watermark", bucket <= watermark);
+		}
+	}
+
 
 	private void validateStreamRecords(
 		Iterable<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput,

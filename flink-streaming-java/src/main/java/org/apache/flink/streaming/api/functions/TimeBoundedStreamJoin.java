@@ -1,5 +1,6 @@
 package org.apache.flink.streaming.api.functions;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -12,7 +13,9 @@ import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.util.Collector;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 
 public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tuple2<T1, T2>> {
 
@@ -75,7 +78,9 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 								Context ctx,
 								Collector<Tuple2<T1, T2>> out) throws Exception {
 
-		bufferLhs(value, ctx.timestamp());
+		ctx.timerService().registerEventTimeTimer(ctx.timestamp());
+
+		addToLhsBuffer(value, ctx.timestamp());
 		List<Tuple3<T2, Long, Boolean>> candidates = getJoinCandidatesForLhs(ctx.timestamp());
 
 		for (Tuple3<T2, Long, Boolean> candidate : candidates) {
@@ -94,41 +99,24 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 				out.collect(joinedTuple);
 			}
 		}
-
-
-		if (ctx.timerService().currentWatermark() == Long.MIN_VALUE) {
-			return;
-		} else {
-			long maxCleanup = ctx.timerService().currentWatermark() - getWatermarkDelay();
-			cleanupLhs(maxCleanup);
-			printBuffers();
-		}
 	}
 
-	private void cleanupLhs(long maxCleanup) throws Exception {
+	private void removeFromLhsUntil(long maxCleanup) throws Exception {
 
-		if (maxCleanup < lastCleanupLhs) {
-			return;
-		}
-
-		for (long i = lastCleanupLhs; i < maxCleanup; i++) {
+		for (long i = lastCleanupLhs; i <= maxCleanup; i++) {
 			lhs.remove(i);
 		}
 
 		lastCleanupLhs = maxCleanup;
 	}
 
-	private void cleanupRhs(long maxCleanup) throws Exception {
+	private void removeFromRhsUntil(long maxCleanup) throws Exception {
 
-		if (maxCleanup < lastCleanupLhs) {
-			return;
-		}
-
-		for (long i = lastCleanupRhs; i < maxCleanup; i++) {
+		for (long i = lastCleanupRhs; i <= maxCleanup; i++) {
 			rhs.remove(i);
 		}
 
-		lastCleanupLhs = maxCleanup;
+		lastCleanupRhs = maxCleanup;
 	}
 
 	private boolean isInBoundsRhs(long rhsTs,
@@ -197,7 +185,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 		List<Tuple3<T1, Long, Boolean>> candidates = new LinkedList<>();
 
-		// TODO: Adapt to granularity here
+		// TODO: Adapt to different bucket sizes here
 		for (long i = min; i <= max; i++) {
 			List<Tuple3<T1, Long, Boolean>> fromBucket = lhs.get(i);
 			if (fromBucket != null) {
@@ -212,7 +200,9 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	public void processElement2(T2 value,
 								Context ctx,
 								Collector<Tuple2<T1, T2>> out) throws Exception {
-		bufferRhs(value, ctx.timestamp());
+
+		addToRhsBuffer(value, ctx.timestamp());
+		ctx.timerService().registerEventTimeTimer(ctx.timestamp());
 
 		List<Tuple3<T1, Long, Boolean>> candidates = getJoinCandidatesForRhs(ctx.timestamp());
 
@@ -232,44 +222,20 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 				out.collect(joinedTuple);
 			}
 		}
-
-		if (ctx.timerService().currentWatermark() == Long.MIN_VALUE) {
-			return;
-		} else {
-			long maxCleanup = ctx.timerService().currentWatermark() - getWatermarkDelay();
-			cleanupRhs(maxCleanup);
-			printBuffers();
-		}
 	}
 
-	private void printBuffers() throws Exception {
-		System.out.println("|-- lhs --");
-		Iterator<Map.Entry<Long, List<Tuple3<T1, Long, Boolean>>>> it = lhs.iterator();
-		while (it.hasNext()) {
-			Map.Entry<Long, List<Tuple3<T1, Long, Boolean>>> e = it.next();
-			System.out.print("| " + e.getKey() + " -> ");
-			for (Tuple3 tup : e.getValue()) {
-				System.out.println(tup.f1);
-			}
-		}
-		System.out.println("|-- end lhs --\n");
+	@Override
+	public void onTimer(long timestamp,
+						OnTimerContext ctx,
+						Collector<Tuple2<T1, T2>> out) throws Exception {
 
-		System.out.println("|-- rhs --");
-
-		Iterator<Map.Entry<Long, List<Tuple3<T2, Long, Boolean>>>> it1 = rhs.iterator();
-		while (it1.hasNext()) {
-			Map.Entry<Long, List<Tuple3<T2, Long, Boolean>>> e = it1.next();
-			System.out.print("| " + e.getKey() + " -> ");
-			for (Tuple3 tup : e.getValue()) {
-				System.out.println(tup.f1);
-			}
-		}
-
-		System.out.println("|-- end rhs --\n");
-
+		// remove from both sides all those elements where the timestamp is less than the lower
+		// bound, because they are not considered for joining anymore
+		removeFromLhsUntil(timestamp + inverseLowerBound);
+		removeFromRhsUntil(timestamp + lowerBound);
 	}
 
-	private void bufferLhs(T1 value, long ts) throws Exception {
+	private void addToLhsBuffer(T1 value, long ts) throws Exception {
 		long bucket = calculateBucket(ts);
 		Tuple3<T1, Long, Boolean> elem = Tuple3.of(
 			value, // actual value
@@ -285,7 +251,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 		lhs.put(bucket, elemsInBucket);
 	}
 
-	private void bufferRhs(T2 value, long ts) throws Exception {
+	private void addToRhsBuffer(T2 value, long ts) throws Exception {
 		long bucket = calculateBucket(ts);
 		Tuple3<T2, Long, Boolean> elem = Tuple3.of(
 			value, // actual value
@@ -306,7 +272,17 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	}
 
 	public long getWatermarkDelay() {
-		// TODO: Adapt this
+		// TODO: Adapt this to when we use the rhs or min timestamp
 		return (upperBound < 0) ? 0 : upperBound;
+	}
+
+	@VisibleForTesting
+	public MapState<Long, List<Tuple3<T1, Long, Boolean>>> getLhs() {
+		return lhs;
+	}
+
+	@VisibleForTesting
+	public MapState<Long, List<Tuple3<T2, Long, Boolean>>> getRhs() {
+		return rhs;
 	}
 }
