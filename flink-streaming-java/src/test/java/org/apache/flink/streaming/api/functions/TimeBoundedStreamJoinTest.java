@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 // TODO: Test failure (checkpoint, create new testharness and restart)
 // TODO: Add setup to testharness
 // TODO: Use auto closable
-// TODO: Parameterize to use different state backends
+// TODO: Parameterize to use different state backends --> This would require circular dependency on flink rocksdb
 @RunWith(Parameterized.class)
 public class TimeBoundedStreamJoinTest {
 
@@ -47,34 +47,26 @@ public class TimeBoundedStreamJoinTest {
 		long upperBound = -1;
 		boolean upperBoundInclusive = true;
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
+				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
-		testHarness.setup();
-		testHarness.open();
 
-		prepareTestHarness(testHarness);
+			testHarness.setup();
+			testHarness.open();
 
-		List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
-			streamRecordOf(2, 1),
+			prepareTestHarness(testHarness);
 
-			streamRecordOf(3, 1),
-			streamRecordOf(3, 2),
+			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
+				streamRecordOf(2, 1),
+				streamRecordOf(3, 1),
+				streamRecordOf(3, 2),
+				streamRecordOf(4, 2),
+				streamRecordOf(4, 3)
+			);
 
-			streamRecordOf(4, 2),
-			streamRecordOf(4, 3)
-		);
-
-		ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
-
-		validateStreamRecords(expectedOutput, testHarness.getOutput());
-		ensureNoLateData(output);
-
-		testHarness.close();
+			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			ensureNoLateData(testHarness.getOutput());
+		}
 	}
 
 	@Test // lhs - 1 <= rhs <= rhs + 1
@@ -86,40 +78,33 @@ public class TimeBoundedStreamJoinTest {
 		long upperBound = 1;
 		boolean upperBoundInclusive = true;
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
+				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
-		testHarness.setup();
-		testHarness.open();
+			testHarness.setup();
+			testHarness.open();
 
-		prepareTestHarness(testHarness);
+			prepareTestHarness(testHarness);
 
-		List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
-			streamRecordOf(1, 1),
-			streamRecordOf(1, 2),
+			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
+				streamRecordOf(1, 1),
+				streamRecordOf(1, 2),
+				streamRecordOf(2, 1),
+				streamRecordOf(2, 2),
+				streamRecordOf(2, 3),
+				streamRecordOf(3, 2),
+				streamRecordOf(3, 3),
+				streamRecordOf(3, 4),
+				streamRecordOf(4, 3),
+				streamRecordOf(4, 4)
+			);
 
-			streamRecordOf(2, 1),
-			streamRecordOf(2, 2),
-			streamRecordOf(2, 3),
+			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-			streamRecordOf(3, 2),
-			streamRecordOf(3, 3),
-			streamRecordOf(3, 4),
+			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			ensureNoLateData(output);
 
-			streamRecordOf(4, 3),
-			streamRecordOf(4, 4)
-		);
-
-		ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
-
-		validateStreamRecords(expectedOutput, testHarness.getOutput());
-		ensureNoLateData(output);
-
-		testHarness.close();
+		}
 	}
 
 	@Test // lhs + 1 <= rhs <= lhs + 2
@@ -130,30 +115,25 @@ public class TimeBoundedStreamJoinTest {
 		boolean lowerBoundInclusive = true;
 		boolean upperBoundInclusive = true;
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
+				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
-		testHarness.setup();
-		testHarness.open();
+			testHarness.setup();
+			testHarness.open();
 
-		prepareTestHarness(testHarness);
+			prepareTestHarness(testHarness);
 
-		List<StreamRecord<Tuple2<TestElem, TestElem>>> expected = Lists.newArrayList(
-			streamRecordOf(1, 2),
-			streamRecordOf(1, 3),
-			streamRecordOf(2, 3),
-			streamRecordOf(2, 4),
-			streamRecordOf(3, 4)
-		);
+			List<StreamRecord<Tuple2<TestElem, TestElem>>> expected = Lists.newArrayList(
+				streamRecordOf(1, 2),
+				streamRecordOf(1, 3),
+				streamRecordOf(2, 3),
+				streamRecordOf(2, 4),
+				streamRecordOf(3, 4)
+			);
 
-		validateStreamRecords(expected, testHarness.getOutput());
-		ensureNoLateData(testHarness.getOutput());
-
-		testHarness.close();
+			validateStreamRecords(expected, testHarness.getOutput());
+			ensureNoLateData(testHarness.getOutput());
+		}
 	}
 
 	@Test
@@ -164,28 +144,23 @@ public class TimeBoundedStreamJoinTest {
 		long upperBound = -1;
 		boolean upperBoundInclusive = false;
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
+				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
-		testHarness.setup();
-		testHarness.open();
-		prepareTestHarness(testHarness);
+			testHarness.setup();
+			testHarness.open();
+			prepareTestHarness(testHarness);
 
-		List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
-			streamRecordOf(3, 1),
-			streamRecordOf(4, 2)
-		);
+			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
+				streamRecordOf(3, 1),
+				streamRecordOf(4, 2)
+			);
 
-		ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
+			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-		validateStreamRecords(expectedOutput, testHarness.getOutput());
-		ensureNoLateData(output);
-
-		testHarness.close();
+			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			ensureNoLateData(output);
+		}
 	}
 
 	@Test
@@ -196,30 +171,25 @@ public class TimeBoundedStreamJoinTest {
 		long upperBound = 1;
 		boolean upperBoundInclusive = false;
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
+				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
-		testHarness.setup();
-		testHarness.open();
-		prepareTestHarness(testHarness);
+			testHarness.setup();
+			testHarness.open();
+			prepareTestHarness(testHarness);
 
-		List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
-			streamRecordOf(1, 1),
-			streamRecordOf(2, 2),
-			streamRecordOf(3, 3),
-			streamRecordOf(4, 4)
-		);
+			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
+				streamRecordOf(1, 1),
+				streamRecordOf(2, 2),
+				streamRecordOf(3, 3),
+				streamRecordOf(4, 4)
+			);
 
-		ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
+			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-		validateStreamRecords(expectedOutput, testHarness.getOutput());
-		ensureNoLateData(output);
-
-		testHarness.close();
+			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			ensureNoLateData(output);
+		}
 	}
 
 	@Test
@@ -230,28 +200,24 @@ public class TimeBoundedStreamJoinTest {
 		long upperBound = 3;
 		boolean upperBoundInclusive = false;
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
+				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
-		testHarness.setup();
-		testHarness.open();
-		prepareTestHarness(testHarness);
+			testHarness.setup();
+			testHarness.open();
+			prepareTestHarness(testHarness);
 
-		List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
-			streamRecordOf(1, 3),
-			streamRecordOf(2, 4)
-		);
+			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
+				streamRecordOf(1, 3),
+				streamRecordOf(2, 4)
+			);
 
-		ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
+			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-		validateStreamRecords(expectedOutput, testHarness.getOutput());
-		ensureNoLateData(output);
+			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			ensureNoLateData(output);
 
-		testHarness.close();
+		}
 	}
 
 	@Test
