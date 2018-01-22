@@ -4,10 +4,10 @@ import com.google.common.collect.Iterables;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.util.KeyedTwoInputStreamOperatorTestHarness;
 import org.junit.Assert;
 import org.junit.Test;
@@ -16,16 +16,14 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertFalse;
-
 // TODO: Test failure (checkpoint, create new testharness and restart)
 // TODO: Test state growth
 // TODO: Add setup to testharness
+// TODO: Maybe use TestHarnessEqualsSorted?
 @RunWith(Parameterized.class)
 public class TimeBoundedStreamJoinTest {
 
@@ -56,6 +54,7 @@ public class TimeBoundedStreamJoinTest {
 			Tuple2<TestElem, TestElem>> testHarness
 			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
+		testHarness.setup();
 		testHarness.open();
 
 		prepareTestHarness(testHarness);
@@ -94,6 +93,7 @@ public class TimeBoundedStreamJoinTest {
 			Tuple2<TestElem, TestElem>> testHarness
 			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
+		testHarness.setup();
 		testHarness.open();
 
 		prepareTestHarness(testHarness);
@@ -137,6 +137,7 @@ public class TimeBoundedStreamJoinTest {
 			Tuple2<TestElem, TestElem>> testHarness
 			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
+		testHarness.setup();
 		testHarness.open();
 
 		prepareTestHarness(testHarness);
@@ -170,6 +171,7 @@ public class TimeBoundedStreamJoinTest {
 			Tuple2<TestElem, TestElem>> testHarness
 			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
+		testHarness.setup();
 		testHarness.open();
 		prepareTestHarness(testHarness);
 
@@ -201,6 +203,7 @@ public class TimeBoundedStreamJoinTest {
 			Tuple2<TestElem, TestElem>> testHarness
 			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
+		testHarness.setup();
 		testHarness.open();
 		prepareTestHarness(testHarness);
 
@@ -234,6 +237,7 @@ public class TimeBoundedStreamJoinTest {
 			Tuple2<TestElem, TestElem>> testHarness
 			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
+		testHarness.setup();
 		testHarness.open();
 		prepareTestHarness(testHarness);
 
@@ -342,13 +346,98 @@ public class TimeBoundedStreamJoinTest {
 		assertEmpty(joinFunc.getRhs());
 	}
 
+	@Test
+	// TODO: Wording
+	public void testRestart() throws Exception {
+
+		// config
+		int lowerBound = -1;
+		boolean lowerBoundInclusive = true;
+		int upperBound = 1;
+		boolean upperBoundInclusive = true;
+
+		// create first test harness
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> testHarness
+			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+
+		testHarness.setup();
+		testHarness.open();
+
+		// process elements with first test harness
+		testHarness.processElement1(createStreamRecord(1, "lhs"));
+		testHarness.processWatermark1(new Watermark(1));
+
+		testHarness.processElement2(createStreamRecord(1, "rhs"));
+		testHarness.processWatermark2(new Watermark(1));
+
+		testHarness.processElement1(createStreamRecord(2, "lhs"));
+		testHarness.processWatermark1(new Watermark(2));
+
+		testHarness.processElement2(createStreamRecord(2, "rhs"));
+		testHarness.processWatermark2(new Watermark(2));
+
+		testHarness.processElement1(createStreamRecord(3, "lhs"));
+		testHarness.processWatermark1(new Watermark(3));
+
+		testHarness.processElement2(createStreamRecord(3, "rhs"));
+		testHarness.processWatermark2(new Watermark(3));
+
+
+		// TODO: What am I supposed to pass in here?
+		// snapshot and validate output
+		OperatorStateHandles handles = testHarness.snapshot(0, 0);
+		testHarness.close();
+
+		List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
+			streamRecordOf(1, 1),
+			streamRecordOf(1, 2),
+			streamRecordOf(2, 1),
+			streamRecordOf(2, 2),
+			streamRecordOf(2, 3),
+			streamRecordOf(3, 2),
+			streamRecordOf(3, 3)
+		);
+
+		ensureNoLateData(testHarness.getOutput());
+		validateStreamRecords(expectedOutput, testHarness.getOutput());
+
+		// create new test harness from snapshpt
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>
+			> newTestHarness = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+
+
+		newTestHarness.setup();
+		newTestHarness.initializeState(handles);
+		newTestHarness.open();
+
+		// process elements
+		newTestHarness.processElement1(createStreamRecord(4, "lhs"));
+		newTestHarness.processWatermark1(new Watermark(4));
+
+		newTestHarness.processElement2(createStreamRecord(4, "rhs"));
+		newTestHarness.processWatermark2(new Watermark(4));
+
+		// assert expected output
+		expectedOutput = Lists.newArrayList(
+			streamRecordOf(3, 4),
+			streamRecordOf(4, 3),
+			streamRecordOf(4, 4)
+		);
+
+		ensureNoLateData(newTestHarness.getOutput());
+		validateStreamRecords(expectedOutput, newTestHarness.getOutput());
+	}
+
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
 		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
-		if (!stateIsEmpty) {
-			for (Map.Entry x : state.entries()) {
-				System.out.print(x.getKey() + " -> " + x.getValue());
-			}
-		}
 		Assert.assertTrue("state not empty", stateIsEmpty);
 	}
 
@@ -360,26 +449,6 @@ public class TimeBoundedStreamJoinTest {
 		Assert.assertEquals("too many objects in state", ts.length, Iterables.size(state.keys()));
 	}
 
-	private void noElementCachedEarlierThan(long watermark,
-											MapState<Long, List<Tuple3<TestElem, Long, Boolean>>> lhs,
-											MapState<Long, List<Tuple3<TestElem, Long, Boolean>>> rhs) throws Exception {
-
-		for (long bucket : lhs.keys()) {
-			if (bucket <= watermark) {
-				System.out.println(bucket + " " + watermark);
-			}
-			assertFalse("bucket should not be smaller or equal to watermark", bucket <= watermark);
-		}
-
-		for (long bucket : rhs.keys()) {
-			if (bucket <= watermark) {
-				System.out.println(bucket + " " + watermark);
-			}
-			assertFalse("bucket should not be smaller or equal to watermark", bucket <= watermark);
-		}
-	}
-
-
 	private void validateStreamRecords(
 		Iterable<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput,
 		Queue<Object> actualOutput) {
@@ -390,6 +459,21 @@ public class TimeBoundedStreamJoinTest {
 			.size();
 
 		int expectedSize = Iterables.size(expectedOutput);
+
+		if (expectedSize != actualSize) {
+			// for debug
+			for (StreamRecord r : expectedOutput) {
+				System.out.print(r + " | ");
+			}
+
+			System.out.println("");
+
+			for (Object r : actualOutput) {
+				System.out.print(r + " | ");
+			}
+
+			System.out.println("");
+		}
 
 		Assert.assertEquals(
 			"Expected and actual size of stream records different",

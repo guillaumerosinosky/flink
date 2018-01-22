@@ -4,6 +4,8 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.state.ValueState;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -17,6 +19,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
+// TODO: Make bucket granularity adaptable
+// TODO: Allow user to specify which ts to pick
 public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tuple2<T1, T2>> {
 
 	private final long lowerBound;
@@ -31,10 +35,11 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	private final long bucketGranularity = 1;
 
 	// TODO: Make Valuestate
-	private long lastCleanupLhs = 0;
-	private long lastCleanupRhs = 0;
+	private ValueState<Long> lastCleanupLhs;
+	private ValueState<Long> lastCleanupRhs;
 
 
+	//	 TODO: Rename this?
 	private MapState<Long, List<Tuple3<T1, Long, Boolean>>> lhs;
 	private MapState<Long, List<Tuple3<T2, Long, Boolean>>> rhs;
 
@@ -58,6 +63,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	@Override
 	public void open(Configuration parameters) throws Exception {
 		super.open(parameters);
+
 		this.lhs = getRuntimeContext().getMapState(new MapStateDescriptor<>(
 			"lhs",
 			TypeInformation.of(Long.class),
@@ -71,6 +77,24 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 			TypeInformation.of(new TypeHint<List<Tuple3<T2, Long, Boolean>>>() {
 			})
 		));
+
+		this.lastCleanupLhs = getRuntimeContext().getState(new ValueStateDescriptor<>(
+			"lastCleanupLhs",
+			TypeInformation.of(Long.class)
+		));
+
+		this.lastCleanupRhs = getRuntimeContext().getState(new ValueStateDescriptor<>(
+			"lastCleanupRhs",
+			TypeInformation.of(Long.class)
+		));
+
+		if (this.lastCleanupRhs.value() == null) {
+			this.lastCleanupRhs.update(0L);
+		}
+
+		if (this.lastCleanupLhs.value() == null) {
+			this.lastCleanupRhs.update(0L);
+		}
 	}
 
 	@Override
@@ -103,20 +127,20 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
 
-		for (long i = lastCleanupLhs; i <= maxCleanup; i++) {
+		for (long i = lastCleanupLhs.value(); i <= maxCleanup; i++) {
 			lhs.remove(i);
 		}
 
-		lastCleanupLhs = maxCleanup;
+		lastCleanupLhs.update(maxCleanup);
 	}
 
 	private void removeFromRhsUntil(long maxCleanup) throws Exception {
 
-		for (long i = lastCleanupRhs; i <= maxCleanup; i++) {
+		for (long i = lastCleanupRhs.value(); i <= maxCleanup; i++) {
 			rhs.remove(i);
 		}
 
-		lastCleanupRhs = maxCleanup;
+		lastCleanupRhs.update(maxCleanup);
 	}
 
 	private boolean isInBoundsRhs(long rhsTs,
