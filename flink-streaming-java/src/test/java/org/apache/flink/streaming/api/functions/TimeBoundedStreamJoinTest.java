@@ -266,50 +266,50 @@ public class TimeBoundedStreamJoinTest {
 		testHarness.processElement1(createStreamRecord(1, "lhs"));
 		testHarness.processWatermark1(new Watermark(1));
 
-		assertContainsOnly(joinFunc.getLhs(), 1);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 1);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(1, "rhs"));
 		testHarness.processWatermark2(new Watermark(1));
 
-		assertContainsOnly(joinFunc.getLhs(), 1);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 1);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(2, "lhs"));
 		testHarness.processWatermark1(new Watermark(2));
 
-		assertContainsOnly(joinFunc.getLhs(), 1, 2);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 1, 2);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(2, "rhs"));
 		testHarness.processWatermark2(new Watermark(2));
 
-		assertContainsOnly(joinFunc.getLhs(), 1, 2);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 1, 2);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(3, "lhs"));
 		testHarness.processWatermark1(new Watermark(3));
 
-		assertContainsOnly(joinFunc.getLhs(), 1, 2, 3);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 1, 2, 3);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(3, "rhs"));
 		testHarness.processWatermark2(new Watermark(3));
 
-		assertContainsOnly(joinFunc.getLhs(), 2, 3);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 2, 3);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(4, "lhs"));
 		testHarness.processWatermark1(new Watermark(4));
 
-		assertContainsOnly(joinFunc.getLhs(), 2, 3, 4);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 2, 3, 4);
+		assertEmpty(joinFunc.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(4, "rhs"));
 		testHarness.processWatermark2(new Watermark(4));
 
-		assertContainsOnly(joinFunc.getLhs(), 3, 4);
-		assertEmpty(joinFunc.getRhs());
+		assertContainsOnly(joinFunc.getLeftBuffer(), 3, 4);
+		assertEmpty(joinFunc.getRightBuffer());
 	}
 
 	@Test
