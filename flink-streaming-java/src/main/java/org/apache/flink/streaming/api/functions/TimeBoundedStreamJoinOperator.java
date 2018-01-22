@@ -19,11 +19,11 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.Collector;
 
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
-// TODO: Allow user to specify which ts to pick
 public class TimeBoundedStreamJoinOperator<T1, T2>
 	extends AbstractStreamOperator<Tuple2<T1, T2>>
 	implements TwoInputStreamOperator<T1, T2, Tuple2<T1, T2>> {
@@ -99,19 +99,11 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		T1 leftValue = record.getValue();
 
 		addToLeftBuffer(leftValue, leftTs);
-		List<Tuple3<T2, Long, Boolean>> candidates = getJoinCandidatesForLeftElement(leftTs);
 
-		for (Tuple3<T2, Long, Boolean> rightCandidate : candidates) {
-
-			long rightTs = rightCandidate.f1;
-
-			long lowerBound = leftTs + this.lowerBound;
-			long upperBound = leftTs + this.upperBound;
-
-			if (isRightElemInBounds(rightTs, lowerBound, upperBound)) {
-				this.collect(leftValue, rightCandidate.f0, leftTs);
-			}
-		}
+		getJoinCandidatesForLeftElement(leftTs)
+			.stream()
+			.filter(rightCandidate -> shouldBeJoined(leftTs, rightCandidate.f1))
+			.forEach(rightValue -> this.collect(leftValue, rightValue.f0, leftTs));
 	}
 
 	@Override
@@ -122,18 +114,10 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 
 		addToRightBuffer(rightElem, rightTs);
 
-		List<Tuple3<T1, Long, Boolean>> candidates = getJoinCandidatesForRightElement(rightTs);
-
-		for (Tuple3<T1, Long, Boolean> leftElem : candidates) {
-
-			long leftTs = leftElem.f1;
-			long lowerBound = rightTs + inverseLowerBound;
-			long upperBound = rightTs + inverseUpperBound;
-
-			if (isLeftElemInBounds(leftTs, lowerBound, upperBound)) {
-				this.collect(leftElem.f0, rightElem, leftTs);
-			}
-		}
+		getJoinCandidatesForRightElement(rightTs)
+			.stream()
+			.filter(leftCandidate -> shouldBeJoined(leftCandidate.f1, rightTs))
+			.forEach(leftValue -> this.collect(leftValue.f0, rightElem, leftValue.f1));
 	}
 
 	@Override
@@ -187,45 +171,19 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		lastCleanupLeftBuffer.update(maxCleanup);
 	}
 
-	private boolean isRightElemInBounds(long rhsTs,
-										long lowerBound,
-										long upperBound) {
+	private boolean shouldBeJoined(long leftTs, long rightTs) {
+		long elemLowerBound = leftTs + lowerBound;
+		long elemUpperBound = leftTs + upperBound;
 
+		boolean lowerBoundOk = (lowerBoundInclusive)
+			? (elemLowerBound <= rightTs)
+			: (elemLowerBound < rightTs);
 
-		if (lowerBoundInclusive && upperBoundInclusive) {
-			return lowerBound <= rhsTs && rhsTs <= upperBound;
-		} else if (lowerBoundInclusive && !upperBoundInclusive) {
-			return lowerBound <= rhsTs && rhsTs < upperBound;
-		} else if (!lowerBoundInclusive && upperBoundInclusive) {
-			return lowerBound < rhsTs && rhsTs <= upperBound;
-		} else if (!lowerBoundInclusive && !upperBoundInclusive) {
-			return lowerBound < rhsTs && rhsTs < upperBound;
-		} else {
-			// TODO: What to do here?
-			throw new RuntimeException("");
-		}
+		boolean upperBoundOk = (upperBoundInclusive)
+			? (rightTs <= elemUpperBound)
+			: (rightTs < elemUpperBound);
 
-	}
-
-	private boolean isLeftElemInBounds(long lhsTs,
-									   long inverseLowerBound,
-									   long inverseUpperBound) {
-
-		boolean invLowerBoundInclusive = upperBoundInclusive;
-		boolean invUpperBoundInclusive = lowerBoundInclusive;
-
-		if (invLowerBoundInclusive && invUpperBoundInclusive) {
-			return inverseLowerBound <= lhsTs && lhsTs <= inverseUpperBound;
-		} else if (!invLowerBoundInclusive && invUpperBoundInclusive) {
-			return inverseLowerBound < lhsTs && lhsTs <= inverseUpperBound;
-		} else if (invLowerBoundInclusive && !invUpperBoundInclusive) {
-			return inverseLowerBound <= lhsTs && lhsTs < inverseUpperBound;
-		} else if (!invLowerBoundInclusive && !invUpperBoundInclusive) {
-			return inverseLowerBound < lhsTs && lhsTs < inverseUpperBound;
-		} else {
-			// TODO: What to do here?
-			throw new InvalidProgramException("");
-		}
+		return lowerBoundOk && upperBoundOk;
 	}
 
 	private List<Tuple3<T2, Long, Boolean>> getJoinCandidatesForLeftElement(long ts) throws Exception {
