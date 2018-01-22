@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 // TODO: Use auto closable
 // TODO: Parameterize to use different state backends --> This would require circular dependency on flink rocksdb
 @RunWith(Parameterized.class)
-public class TimeBoundedStreamJoinTest {
+public class TimeBoundedStreamJoinOperatorTest {
 
 	private final boolean lhsFasterThanRhs;
 
@@ -34,7 +34,7 @@ public class TimeBoundedStreamJoinTest {
 		return new Boolean[]{true, false};
 	}
 
-	public TimeBoundedStreamJoinTest(boolean lhsFasterThanRhs) {
+	public TimeBoundedStreamJoinOperatorTest(boolean lhsFasterThanRhs) {
 		this.lhsFasterThanRhs = lhsFasterThanRhs;
 	}
 
@@ -229,21 +229,12 @@ public class TimeBoundedStreamJoinTest {
 		long upperBound = 2;
 		boolean upperBoundInclusive = true;
 
-		TimeBoundedStreamJoin<TestElem, TestElem> joinFunc = new TimeBoundedStreamJoin<>(
+		TimeBoundedStreamJoinOperator<TestElem, TestElem> operator = new TimeBoundedStreamJoinOperator<>(
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
 			upperBoundInclusive
 		);
-
-		long delay = joinFunc.getWatermarkDelay();
-
-		KeyedCoProcessOperatorWithWatermarkDelay<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> operator
-			= new KeyedCoProcessOperatorWithWatermarkDelay<>(joinFunc, delay);
 
 		KeyedTwoInputStreamOperatorTestHarness<
 			String,
@@ -256,60 +247,57 @@ public class TimeBoundedStreamJoinTest {
 			(elem) -> elem.key, // key
 			TypeInformation.of(String.class)
 		);
-
-		// TODO: Remove me
-		System.out.println("Watermark delay: " + joinFunc.getWatermarkDelay());
-
+		
 		testHarness.setup();
 		testHarness.open();
 
 		testHarness.processElement1(createStreamRecord(1, "lhs"));
 		testHarness.processWatermark1(new Watermark(1));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 1);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 1);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(1, "rhs"));
 		testHarness.processWatermark2(new Watermark(1));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 1);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 1);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(2, "lhs"));
 		testHarness.processWatermark1(new Watermark(2));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 1, 2);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 1, 2);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(2, "rhs"));
 		testHarness.processWatermark2(new Watermark(2));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 1, 2);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 1, 2);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(3, "lhs"));
 		testHarness.processWatermark1(new Watermark(3));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 1, 2, 3);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 1, 2, 3);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(3, "rhs"));
 		testHarness.processWatermark2(new Watermark(3));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 2, 3);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 2, 3);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(4, "lhs"));
 		testHarness.processWatermark1(new Watermark(4));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 2, 3, 4);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 2, 3, 4);
+		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(4, "rhs"));
 		testHarness.processWatermark2(new Watermark(4));
 
-		assertContainsOnly(joinFunc.getLeftBuffer(), 3, 4);
-		assertEmpty(joinFunc.getRightBuffer());
+		assertContainsOnly(operator.getLeftBuffer(), 3, 4);
+		assertEmpty(operator.getRightBuffer());
 	}
 
 	@Test
@@ -482,21 +470,14 @@ public class TimeBoundedStreamJoinTest {
 													  long upperBound,
 													  boolean upperBoundInclusive) throws Exception {
 
-		TimeBoundedStreamJoin<TestElem, TestElem> joinFunc = new TimeBoundedStreamJoin<>(
+		TimeBoundedStreamJoinOperator<
+			TestElem,
+			TestElem> operator
+			= new TimeBoundedStreamJoinOperator<>(
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
-			upperBoundInclusive
-		);
-
-		long delay = joinFunc.getWatermarkDelay();
-
-		KeyedCoProcessOperatorWithWatermarkDelay<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> operator
-			= new KeyedCoProcessOperatorWithWatermarkDelay<>(joinFunc, delay);
+			upperBoundInclusive);
 
 		return new KeyedTwoInputStreamOperatorTestHarness<>(
 			operator,
