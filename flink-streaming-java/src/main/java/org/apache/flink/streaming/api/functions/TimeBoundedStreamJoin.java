@@ -19,6 +19,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
+import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
+
 // TODO: Make bucket granularity adaptable
 // TODO: Allow user to specify which ts to pick
 public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tuple2<T1, T2>> {
@@ -66,26 +68,26 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 		this.lhs = getRuntimeContext().getMapState(new MapStateDescriptor<>(
 			"lhs",
-			TypeInformation.of(Long.class),
+			LONG_TYPE_INFO,
 			TypeInformation.of(new TypeHint<List<Tuple3<T1, Long, Boolean>>>() {
 			})
 		));
 
 		this.rhs = getRuntimeContext().getMapState(new MapStateDescriptor<>(
 			"rhs",
-			TypeInformation.of(Long.class),
+			LONG_TYPE_INFO,
 			TypeInformation.of(new TypeHint<List<Tuple3<T2, Long, Boolean>>>() {
 			})
 		));
 
 		this.lastCleanupLhs = getRuntimeContext().getState(new ValueStateDescriptor<>(
 			"lastCleanupLhs",
-			TypeInformation.of(Long.class)
+			LONG_TYPE_INFO
 		));
 
 		this.lastCleanupRhs = getRuntimeContext().getState(new ValueStateDescriptor<>(
 			"lastCleanupRhs",
-			TypeInformation.of(Long.class)
+			LONG_TYPE_INFO
 		));
 
 
