@@ -10,10 +10,11 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
-import org.apache.flink.util.Collector;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -23,7 +24,9 @@ import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
 // TODO: Allow user to specify which ts to pick
-public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tuple2<T1, T2>> {
+public class TimeBoundedStreamJoinOperator<T1, T2>
+	extends AbstractStreamOperator<Tuple2<T1, T2>>
+	implements TwoInputStreamOperator<T1, T2, Tuple2<T1, T2>> {
 
 	private final long lowerBound;
 	private final long upperBound;
@@ -39,14 +42,15 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	private ValueState<Long> lastCleanupRightBuffer;
 	private ValueState<Long> lastCleanupLeftBuffer;
 
-	//	 TODO: Rename this?
 	private MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
-	public TimeBoundedStreamJoin(long lowerBound,
-								 long upperBound,
-								 boolean lowerBoundInclusive,
-								 boolean upperBoundInclusive) {
+	private transient TimestampedCollector<Tuple2<T1, T2>> collector;
+
+	public TimeBoundedStreamJoinOperator(long lowerBound,
+										 long upperBound,
+										 boolean lowerBoundInclusive,
+										 boolean upperBoundInclusive) {
 
 		this.lowerBound = lowerBound;
 		this.upperBound = upperBound;
@@ -56,13 +60,12 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 		this.lowerBoundInclusive = lowerBoundInclusive;
 		this.upperBoundInclusive = upperBoundInclusive;
-		// TODO: Add logic for bounds inclusion
-		// TODO: Add inverse logic for bounds inclusion
 	}
 
 	@Override
-	public void open(Configuration parameters) throws Exception {
-		super.open(parameters);
+	public void open() throws Exception {
+		super.open();
+		collector = new TimestampedCollector<>(output);
 
 		this.leftBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
 			"leftBuffer",
@@ -87,36 +90,71 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 			"lastCleanupLeftBuffer",
 			LONG_TYPE_INFO
 		));
-
-
 	}
 
 	@Override
-	public void processElement1(T1 value,
-								Context ctx,
-								Collector<Tuple2<T1, T2>> out) throws Exception {
+	public void processElement1(StreamRecord<T1> record) throws Exception {
 
-		ctx.timerService().registerEventTimeTimer(ctx.timestamp());
+		long leftTs = record.getTimestamp();
+		T1 leftValue = record.getValue();
 
-		addToLeftBuffer(value, ctx.timestamp());
-		List<Tuple3<T2, Long, Boolean>> candidates = getJoinCandidatesForLeftElement(ctx.timestamp());
+		addToLeftBuffer(leftValue, leftTs);
+		List<Tuple3<T2, Long, Boolean>> candidates = getJoinCandidatesForLeftElement(leftTs);
 
-		for (Tuple3<T2, Long, Boolean> candidate : candidates) {
+		for (Tuple3<T2, Long, Boolean> rightCandidate : candidates) {
 
-			long leftTs = ctx.timestamp();
-			long rightTs = candidate.f1;
+			long rightTs = rightCandidate.f1;
 
 			long lowerBound = leftTs + this.lowerBound;
 			long upperBound = leftTs + this.upperBound;
 
 			if (isRightElemInBounds(rightTs, lowerBound, upperBound)) {
-				Tuple2<T1, T2> joinedTuple = Tuple2.of(value, candidate.f0);
-
-				// TODO: Adapt timestamp strategy
-				((TimestampedCollector<Tuple2<T1, T2>>) out).setAbsoluteTimestamp(ctx.timestamp());
-				out.collect(joinedTuple);
+				this.collect(leftValue, rightCandidate.f0, leftTs);
 			}
 		}
+	}
+
+	@Override
+	public void processElement2(StreamRecord<T2> record) throws Exception {
+
+		long rightTs = record.getTimestamp();
+		T2 rightElem = record.getValue();
+
+		addToRightBuffer(rightElem, rightTs);
+
+		List<Tuple3<T1, Long, Boolean>> candidates = getJoinCandidatesForRightElement(rightTs);
+
+		for (Tuple3<T1, Long, Boolean> leftElem : candidates) {
+
+			long leftTs = leftElem.f1;
+			long lowerBound = rightTs + inverseLowerBound;
+			long upperBound = rightTs + inverseUpperBound;
+
+			if (isLeftElemInBounds(leftTs, lowerBound, upperBound)) {
+				this.collect(leftElem.f0, rightElem, leftTs);
+			}
+		}
+	}
+
+	@Override
+	public void processWatermark(Watermark mark) throws Exception {
+
+		// remove from both sides all those elements where the timestamp is less than the lower
+		// bound, because they are not considered for joining anymore
+		removeFromLhsUntil(mark.getTimestamp() + inverseLowerBound);
+		removeFromRhsUntil(mark.getTimestamp() + lowerBound);
+
+		if (timeServiceManager != null) {
+			timeServiceManager.advanceWatermark(mark);
+		}
+
+		output.emitWatermark(new Watermark(mark.getTimestamp() - getWatermarkDelay()));
+	}
+
+	private void collect(T1 left, T2 right, long ts) {
+		Tuple2<T1, T2> out = Tuple2.of(left, right);
+		this.collector.setAbsoluteTimestamp(ts);
+		this.collector.collect(out);
 	}
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
@@ -224,45 +262,6 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 		}
 
 		return candidates;
-	}
-
-	@Override
-	public void processElement2(T2 value,
-								Context ctx,
-								Collector<Tuple2<T1, T2>> out) throws Exception {
-
-		addToRightBuffer(value, ctx.timestamp());
-		ctx.timerService().registerEventTimeTimer(ctx.timestamp());
-
-		List<Tuple3<T1, Long, Boolean>> candidates = getJoinCandidatesForRightElement(ctx.timestamp());
-
-		for (Tuple3<T1, Long, Boolean> candidate : candidates) {
-
-			long rightTs = ctx.timestamp();
-			long leftTs = candidate.f1;
-
-
-			long lowerBound = rightTs + inverseLowerBound;
-			long upperBound = rightTs + inverseUpperBound;
-
-			if (isLeftElemInBounds(leftTs, lowerBound, upperBound)) {
-				Tuple2<T1, T2> joinedTuple = Tuple2.of(candidate.f0, value);
-				// TODO: Adapt timestamp strategy
-				((TimestampedCollector<Tuple2<T1, T2>>) out).setAbsoluteTimestamp(candidate.f1);
-				out.collect(joinedTuple);
-			}
-		}
-	}
-
-	@Override
-	public void onTimer(long timestamp,
-						OnTimerContext ctx,
-						Collector<Tuple2<T1, T2>> out) throws Exception {
-
-		// remove from both sides all those elements where the timestamp is less than the lower
-		// bound, because they are not considered for joining anymore
-		removeFromLhsUntil(timestamp + inverseLowerBound);
-		removeFromRhsUntil(timestamp + lowerBound);
 	}
 
 	private void addToLeftBuffer(T1 value, long ts) throws Exception {
