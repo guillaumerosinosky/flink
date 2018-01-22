@@ -21,9 +21,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
 // TODO: Test failure (checkpoint, create new testharness and restart)
-// TODO: Test state growth
 // TODO: Add setup to testharness
-// TODO: Maybe use TestHarnessEqualsSorted?
+// TODO: Use auto closable
+// TODO: Parameterize to use different state backends
 @RunWith(Parameterized.class)
 public class TimeBoundedStreamJoinTest {
 
@@ -449,6 +449,7 @@ public class TimeBoundedStreamJoinTest {
 		Assert.assertEquals("too many objects in state", ts.length, Iterables.size(state.keys()));
 	}
 
+	//	TODO: Rename me
 	private void validateStreamRecords(
 		Iterable<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput,
 		Queue<Object> actualOutput) {
@@ -460,6 +461,7 @@ public class TimeBoundedStreamJoinTest {
 
 		int expectedSize = Iterables.size(expectedOutput);
 
+//		TODO: Maybe remove this
 		if (expectedSize != actualSize) {
 			// for debug
 			for (StreamRecord r : expectedOutput) {
@@ -486,6 +488,7 @@ public class TimeBoundedStreamJoinTest {
 		}
 	}
 
+	// TODO: Move this to test harness utils
 	private void ensureNoLateData(Iterable<Object> output) throws Exception {
 		// check that no watermark is violated
 		long highestWatermark = Long.MIN_VALUE;
