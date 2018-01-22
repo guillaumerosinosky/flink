@@ -36,14 +36,12 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 	private final long bucketGranularity = 1;
 
-	// TODO: Make Valuestate
-	private ValueState<Long> lastCleanupLhs;
-	private ValueState<Long> lastCleanupRhs;
-
+	private ValueState<Long> lastCleanupRightBuffer;
+	private ValueState<Long> lastCleanupLeftBuffer;
 
 	//	 TODO: Rename this?
-	private MapState<Long, List<Tuple3<T1, Long, Boolean>>> lhs;
-	private MapState<Long, List<Tuple3<T2, Long, Boolean>>> rhs;
+	private MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
+	private MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
 	public TimeBoundedStreamJoin(long lowerBound,
 								 long upperBound,
@@ -66,27 +64,27 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	public void open(Configuration parameters) throws Exception {
 		super.open(parameters);
 
-		this.lhs = getRuntimeContext().getMapState(new MapStateDescriptor<>(
-			"lhs",
+		this.leftBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
+			"leftBuffer",
 			LONG_TYPE_INFO,
 			TypeInformation.of(new TypeHint<List<Tuple3<T1, Long, Boolean>>>() {
 			})
 		));
 
-		this.rhs = getRuntimeContext().getMapState(new MapStateDescriptor<>(
-			"rhs",
+		this.rightBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
+			"rightBuffer",
 			LONG_TYPE_INFO,
 			TypeInformation.of(new TypeHint<List<Tuple3<T2, Long, Boolean>>>() {
 			})
 		));
 
-		this.lastCleanupLhs = getRuntimeContext().getState(new ValueStateDescriptor<>(
-			"lastCleanupLhs",
+		this.lastCleanupRightBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
+			"lastCleanupRightBuffer",
 			LONG_TYPE_INFO
 		));
 
-		this.lastCleanupRhs = getRuntimeContext().getState(new ValueStateDescriptor<>(
-			"lastCleanupRhs",
+		this.lastCleanupLeftBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
+			"lastCleanupLeftBuffer",
 			LONG_TYPE_INFO
 		));
 
@@ -100,18 +98,18 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 		ctx.timerService().registerEventTimeTimer(ctx.timestamp());
 
-		addToLhsBuffer(value, ctx.timestamp());
-		List<Tuple3<T2, Long, Boolean>> candidates = getJoinCandidatesForLhs(ctx.timestamp());
+		addToLeftBuffer(value, ctx.timestamp());
+		List<Tuple3<T2, Long, Boolean>> candidates = getJoinCandidatesForLeftElement(ctx.timestamp());
 
 		for (Tuple3<T2, Long, Boolean> candidate : candidates) {
 
-			long lhsTs = ctx.timestamp();
-			long rhsTs = candidate.f1;
+			long leftTs = ctx.timestamp();
+			long rightTs = candidate.f1;
 
-			long lowerBound = lhsTs + this.lowerBound;
-			long upperBound = lhsTs + this.upperBound;
+			long lowerBound = leftTs + this.lowerBound;
+			long upperBound = leftTs + this.upperBound;
 
-			if (isInBoundsRhs(rhsTs, lowerBound, upperBound)) {
+			if (isRightElemInBounds(rightTs, lowerBound, upperBound)) {
 				Tuple2<T1, T2> joinedTuple = Tuple2.of(value, candidate.f0);
 
 				// TODO: Adapt timestamp strategy
@@ -124,36 +122,36 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
 
 		// setup state
-		if (this.lastCleanupLhs.value() == null) {
-			this.lastCleanupLhs.update(0L);
+		if (this.lastCleanupRightBuffer.value() == null) {
+			this.lastCleanupRightBuffer.update(0L);
 		}
 
-		// remove elements from lhs in range [lastValue, maxCleanup]
-		for (long i = lastCleanupLhs.value(); i <= maxCleanup; i++) {
-			lhs.remove(i);
+		// remove elements from leftBuffer in range [lastValue, maxCleanup]
+		for (long i = lastCleanupRightBuffer.value(); i <= maxCleanup; i++) {
+			leftBuffer.remove(i);
 		}
 
-		lastCleanupLhs.update(maxCleanup);
+		lastCleanupRightBuffer.update(maxCleanup);
 	}
 
 	private void removeFromRhsUntil(long maxCleanup) throws Exception {
 
 		// setup state
-		if (this.lastCleanupRhs.value() == null) {
-			this.lastCleanupRhs.update(0L);
+		if (this.lastCleanupLeftBuffer.value() == null) {
+			this.lastCleanupLeftBuffer.update(0L);
 		}
 
-		// remove elements from rhs in range [lastValue, maxCleanup]
-		for (long i = lastCleanupRhs.value(); i <= maxCleanup; i++) {
-			rhs.remove(i);
+		// remove elements from rightBuffer in range [lastValue, maxCleanup]
+		for (long i = lastCleanupLeftBuffer.value(); i <= maxCleanup; i++) {
+			rightBuffer.remove(i);
 		}
 
-		lastCleanupRhs.update(maxCleanup);
+		lastCleanupLeftBuffer.update(maxCleanup);
 	}
 
-	private boolean isInBoundsRhs(long rhsTs,
-								  long lowerBound,
-								  long upperBound) {
+	private boolean isRightElemInBounds(long rhsTs,
+										long lowerBound,
+										long upperBound) {
 
 
 		if (lowerBoundInclusive && upperBoundInclusive) {
@@ -171,9 +169,9 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 	}
 
-	private boolean isInBoundsLhs(long lhsTs,
-								  long inverseLowerBound,
-								  long inverseUpperBound) {
+	private boolean isLeftElemInBounds(long lhsTs,
+									   long inverseLowerBound,
+									   long inverseUpperBound) {
 
 		boolean invLowerBoundInclusive = upperBoundInclusive;
 		boolean invUpperBoundInclusive = lowerBoundInclusive;
@@ -192,7 +190,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 		}
 	}
 
-	private List<Tuple3<T2, Long, Boolean>> getJoinCandidatesForLhs(long ts) throws Exception {
+	private List<Tuple3<T2, Long, Boolean>> getJoinCandidatesForLeftElement(long ts) throws Exception {
 
 		long min = ts + lowerBound;
 		long max = ts + upperBound;
@@ -201,7 +199,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 		// TODO: Adapt to granularity here
 		for (long i = min; i <= max; i++) {
-			List<Tuple3<T2, Long, Boolean>> fromBucket = rhs.get(i);
+			List<Tuple3<T2, Long, Boolean>> fromBucket = rightBuffer.get(i);
 			if (fromBucket != null) {
 				candidates.addAll(fromBucket);
 			}
@@ -210,7 +208,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 		return candidates;
 	}
 
-	private List<Tuple3<T1, Long, Boolean>> getJoinCandidatesForRhs(long ts) throws Exception {
+	private List<Tuple3<T1, Long, Boolean>> getJoinCandidatesForRightElement(long ts) throws Exception {
 
 		long min = ts + inverseLowerBound;
 		long max = ts + inverseUpperBound;
@@ -219,7 +217,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 		// TODO: Adapt to different bucket sizes here
 		for (long i = min; i <= max; i++) {
-			List<Tuple3<T1, Long, Boolean>> fromBucket = lhs.get(i);
+			List<Tuple3<T1, Long, Boolean>> fromBucket = leftBuffer.get(i);
 			if (fromBucket != null) {
 				candidates.addAll(fromBucket);
 			}
@@ -233,21 +231,21 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 								Context ctx,
 								Collector<Tuple2<T1, T2>> out) throws Exception {
 
-		addToRhsBuffer(value, ctx.timestamp());
+		addToRightBuffer(value, ctx.timestamp());
 		ctx.timerService().registerEventTimeTimer(ctx.timestamp());
 
-		List<Tuple3<T1, Long, Boolean>> candidates = getJoinCandidatesForRhs(ctx.timestamp());
+		List<Tuple3<T1, Long, Boolean>> candidates = getJoinCandidatesForRightElement(ctx.timestamp());
 
 		for (Tuple3<T1, Long, Boolean> candidate : candidates) {
 
-			long rhsTs = ctx.timestamp();
-			long lhsTs = candidate.f1;
+			long rightTs = ctx.timestamp();
+			long leftTs = candidate.f1;
 
 
-			long lowerBound = rhsTs + inverseLowerBound;
-			long upperBound = rhsTs + inverseUpperBound;
+			long lowerBound = rightTs + inverseLowerBound;
+			long upperBound = rightTs + inverseUpperBound;
 
-			if (isInBoundsLhs(lhsTs, lowerBound, upperBound)) {
+			if (isLeftElemInBounds(leftTs, lowerBound, upperBound)) {
 				Tuple2<T1, T2> joinedTuple = Tuple2.of(candidate.f0, value);
 				// TODO: Adapt timestamp strategy
 				((TimestampedCollector<Tuple2<T1, T2>>) out).setAbsoluteTimestamp(candidate.f1);
@@ -267,7 +265,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 		removeFromRhsUntil(timestamp + lowerBound);
 	}
 
-	private void addToLhsBuffer(T1 value, long ts) throws Exception {
+	private void addToLeftBuffer(T1 value, long ts) throws Exception {
 		long bucket = calculateBucket(ts);
 		Tuple3<T1, Long, Boolean> elem = Tuple3.of(
 			value, // actual value
@@ -275,15 +273,15 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 			false  // has been joined
 		);
 
-		List<Tuple3<T1, Long, Boolean>> elemsInBucket = lhs.get(bucket);
+		List<Tuple3<T1, Long, Boolean>> elemsInBucket = leftBuffer.get(bucket);
 		if (elemsInBucket == null) {
 			elemsInBucket = new ArrayList<>();
 		}
 		elemsInBucket.add(elem);
-		lhs.put(bucket, elemsInBucket);
+		leftBuffer.put(bucket, elemsInBucket);
 	}
 
-	private void addToRhsBuffer(T2 value, long ts) throws Exception {
+	private void addToRightBuffer(T2 value, long ts) throws Exception {
 		long bucket = calculateBucket(ts);
 		Tuple3<T2, Long, Boolean> elem = Tuple3.of(
 			value, // actual value
@@ -291,12 +289,12 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 			false  // has been joined
 		);
 
-		List<Tuple3<T2, Long, Boolean>> elemsInBucket = rhs.get(bucket);
+		List<Tuple3<T2, Long, Boolean>> elemsInBucket = rightBuffer.get(bucket);
 		if (elemsInBucket == null) {
 			elemsInBucket = new ArrayList<>();
 		}
 		elemsInBucket.add(elem);
-		rhs.put(bucket, elemsInBucket);
+		rightBuffer.put(bucket, elemsInBucket);
 	}
 
 	private long calculateBucket(long ts) {
@@ -304,17 +302,17 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 	}
 
 	public long getWatermarkDelay() {
-		// TODO: Adapt this to when we use the rhs or min timestamp
+		// TODO: Adapt this to when we use the rightBuffer or min timestamp
 		return (upperBound < 0) ? 0 : upperBound;
 	}
 
 	@VisibleForTesting
-	public MapState<Long, List<Tuple3<T1, Long, Boolean>>> getLhs() {
-		return lhs;
+	public MapState<Long, List<Tuple3<T1, Long, Boolean>>> getLeftBuffer() {
+		return leftBuffer;
 	}
 
 	@VisibleForTesting
-	public MapState<Long, List<Tuple3<T2, Long, Boolean>>> getRhs() {
-		return rhs;
+	public MapState<Long, List<Tuple3<T2, Long, Boolean>>> getRightBuffer() {
+		return rightBuffer;
 	}
 }
