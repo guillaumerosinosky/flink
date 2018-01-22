@@ -88,13 +88,7 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 			TypeInformation.of(Long.class)
 		));
 
-		if (this.lastCleanupRhs.value() == null) {
-			this.lastCleanupRhs.update(0L);
-		}
 
-		if (this.lastCleanupLhs.value() == null) {
-			this.lastCleanupRhs.update(0L);
-		}
 	}
 
 	@Override
@@ -127,6 +121,12 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
 
+		// setup state
+		if (this.lastCleanupLhs.value() == null) {
+			this.lastCleanupLhs.update(0L);
+		}
+
+		// remove elements from lhs in range [lastValue, maxCleanup]
 		for (long i = lastCleanupLhs.value(); i <= maxCleanup; i++) {
 			lhs.remove(i);
 		}
@@ -136,6 +136,12 @@ public class TimeBoundedStreamJoin<T1, T2> extends CoProcessFunction<T1, T2, Tup
 
 	private void removeFromRhsUntil(long maxCleanup) throws Exception {
 
+		// setup state
+		if (this.lastCleanupRhs.value() == null) {
+			this.lastCleanupRhs.update(0L);
+		}
+
+		// remove elements from rhs in range [lastValue, maxCleanup]
 		for (long i = lastCleanupRhs.value(); i <= maxCleanup; i++) {
 			rhs.remove(i);
 		}
