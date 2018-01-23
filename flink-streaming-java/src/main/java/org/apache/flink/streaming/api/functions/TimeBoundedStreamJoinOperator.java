@@ -1,7 +1,6 @@
 package org.apache.flink.streaming.api.functions;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -19,11 +18,21 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collector;
 
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
+
+/**
+ * A TwoInputStreamOperator to execute time-bounded stream inner joins.
+ * <p>
+ * By using a configurable lower and upper bound this operator will emit exactly those pairs
+ * (T1, T2) where t2.ts ∈ [T1.ts + lowerBound, T1.ts + upperBound]. Both the lower and the
+ * upper bound can be configured to be either inclusive or exclusive.
+ *
+ * @param <T1> The type of the elements in the left stream
+ * @param <T2> The type of the elements in the right stream
+ */
 public class TimeBoundedStreamJoinOperator<T1, T2>
 	extends AbstractStreamOperator<Tuple2<T1, T2>>
 	implements TwoInputStreamOperator<T1, T2, Tuple2<T1, T2>> {
@@ -39,14 +48,29 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 
 	private final long bucketGranularity = 1;
 
-	private ValueState<Long> lastCleanupRightBuffer;
-	private ValueState<Long> lastCleanupLeftBuffer;
+	private static final String LEFT_BUFFER = "LEFT_BUFFER";
+	private static final String RIGHT_BUFFER = "RIGHT_BUFFER";
+	private static final String LAST_CLEANUP_LEFT = "LAST_CLEANUP_LEFT";
+	private static final String LAST_CLEANUP_RIGHT = "LAST_CLEANUP_RIGHT";
 
-	private MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
-	private MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
+	private transient ValueState<Long> lastCleanupRightBuffer;
+	private transient ValueState<Long> lastCleanupLeftBuffer;
+
+	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
+	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
 	private transient TimestampedCollector<Tuple2<T1, T2>> collector;
 
+	/**
+	 * Creates a new TimeBoundedStreamJoinOperator
+	 *
+	 * @param lowerBound          The lower bound for evaluating if elements should be joined
+	 * @param upperBound          The upper bound for evaluating if elements should be joined
+	 * @param lowerBoundInclusive Whether or not to include elements where the timestamp matches
+	 *                            the lower bound
+	 * @param upperBoundInclusive Whether or not to include elements where the timestamp matches
+	 *                            the upper bound
+	 */
 	public TimeBoundedStreamJoinOperator(long lowerBound,
 										 long upperBound,
 										 boolean lowerBoundInclusive,
@@ -68,30 +92,39 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		collector = new TimestampedCollector<>(output);
 
 		this.leftBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
-			"leftBuffer",
+			LEFT_BUFFER,
 			LONG_TYPE_INFO,
 			TypeInformation.of(new TypeHint<List<Tuple3<T1, Long, Boolean>>>() {
 			})
 		));
 
 		this.rightBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
-			"rightBuffer",
+			RIGHT_BUFFER,
 			LONG_TYPE_INFO,
 			TypeInformation.of(new TypeHint<List<Tuple3<T2, Long, Boolean>>>() {
 			})
 		));
 
 		this.lastCleanupRightBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
-			"lastCleanupRightBuffer",
+			LAST_CLEANUP_RIGHT,
 			LONG_TYPE_INFO
 		));
 
 		this.lastCleanupLeftBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
-			"lastCleanupLeftBuffer",
+			LAST_CLEANUP_LEFT,
 			LONG_TYPE_INFO
 		));
 	}
 
+	/**
+	 * Process a {@link StreamRecord<T>} from the left stream. Whenever an {@link StreamRecord<T>}
+	 * arrives at the left stream, it will get added to the left buffer. Possible join candidates
+	 * for that element will be looked up from the right buffer and if the pair lies within the
+	 * user defined boundaries, it gets collected.
+	 *
+	 * @param record An incoming record to be joined
+	 * @throws Exception Can throw an Exception during state access
+	 */
 	@Override
 	public void processElement1(StreamRecord<T1> record) throws Exception {
 
@@ -149,7 +182,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		}
 
 		// remove elements from leftBuffer in range [lastValue, maxCleanup]
-		for (long i = lastCleanupRightBuffer.value(); i <= maxCleanup; i++) {
+		Long lastCleanUpRight = lastCleanupRightBuffer.value();
+		for (long i = lastCleanUpRight; i <= maxCleanup; i++) {
 			leftBuffer.remove(i);
 		}
 
@@ -164,7 +198,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		}
 
 		// remove elements from rightBuffer in range [lastValue, maxCleanup]
-		for (long i = lastCleanupLeftBuffer.value(); i <= maxCleanup; i++) {
+		Long lastCleanupLeft = lastCleanupLeftBuffer.value();
+		for (long i = lastCleanupLeft; i <= maxCleanup; i++) {
 			rightBuffer.remove(i);
 		}
 
