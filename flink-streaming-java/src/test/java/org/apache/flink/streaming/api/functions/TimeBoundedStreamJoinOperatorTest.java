@@ -40,9 +40,6 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
-// TODO: Test failure (checkpoint, create new testharness and restart)
-// TODO: Add setup to testharness
-// TODO: Use auto closable
 // TODO: Parameterize to use different state backends --> This would require circular dependency on flink rocksdb
 @RunWith(Parameterized.class)
 public class TimeBoundedStreamJoinOperatorTest {
@@ -84,7 +81,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				streamRecordOf(4, 3)
 			);
 
-			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			assertOutput(expectedOutput, testHarness.getOutput());
 			ensureNoLateData(testHarness.getOutput());
 		}
 	}
@@ -121,7 +118,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			assertOutput(expectedOutput, testHarness.getOutput());
 			ensureNoLateData(output);
 
 		}
@@ -151,7 +148,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				streamRecordOf(3, 4)
 			);
 
-			validateStreamRecords(expected, testHarness.getOutput());
+			assertOutput(expected, testHarness.getOutput());
 			ensureNoLateData(testHarness.getOutput());
 		}
 	}
@@ -178,7 +175,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			assertOutput(expectedOutput, testHarness.getOutput());
 			ensureNoLateData(output);
 		}
 	}
@@ -207,7 +204,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			assertOutput(expectedOutput, testHarness.getOutput());
 			ensureNoLateData(output);
 		}
 	}
@@ -234,7 +231,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
-			validateStreamRecords(expectedOutput, testHarness.getOutput());
+			assertOutput(expectedOutput, testHarness.getOutput());
 			ensureNoLateData(output);
 
 		}
@@ -321,8 +318,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	@Test
-	// TODO: Wording
-	public void testRestart() throws Exception {
+	public void testRestoreFromSnapshot() throws Exception {
 
 		// config
 		int lowerBound = -1;
@@ -361,7 +357,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.processWatermark2(new Watermark(3));
 
 
-		// TODO: What am I supposed to pass in here?
 		// snapshot and validate output
 		OperatorStateHandles handles = testHarness.snapshot(0, 0);
 		testHarness.close();
@@ -377,7 +372,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		);
 
 		ensureNoLateData(testHarness.getOutput());
-		validateStreamRecords(expectedOutput, testHarness.getOutput());
+		assertOutput(expectedOutput, testHarness.getOutput());
 
 		// create new test harness from snapshpt
 		KeyedTwoInputStreamOperatorTestHarness<
@@ -407,7 +402,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		);
 
 		ensureNoLateData(newTestHarness.getOutput());
-		validateStreamRecords(expectedOutput, newTestHarness.getOutput());
+		assertOutput(expectedOutput, newTestHarness.getOutput());
 	}
 
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
@@ -423,8 +418,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		Assert.assertEquals("too many objects in state", ts.length, Iterables.size(state.keys()));
 	}
 
-	//	TODO: Rename me
-	private void validateStreamRecords(
+	private void assertOutput(
 		Iterable<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput,
 		Queue<Object> actualOutput) {
 
@@ -434,22 +428,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 			.size();
 
 		int expectedSize = Iterables.size(expectedOutput);
-
-//		TODO: Maybe remove this
-		if (expectedSize != actualSize) {
-			// for debug
-			for (StreamRecord r : expectedOutput) {
-				System.out.print(r + " | ");
-			}
-
-			System.out.println("");
-
-			for (Object r : actualOutput) {
-				System.out.print(r + " | ");
-			}
-
-			System.out.println("");
-		}
 
 		Assert.assertEquals(
 			"Expected and actual size of stream records different",
@@ -463,7 +441,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	// TODO: Move this to test harness utils
-	private void ensureNoLateData(Iterable<Object> output) throws Exception {
+	private void ensureNoLateData(Iterable<Object> output) {
 		// check that no watermark is violated
 		long highestWatermark = Long.MIN_VALUE;
 
@@ -472,11 +450,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				highestWatermark = ((Watermark) elem).asWatermark().getTimestamp();
 			} else if (elem instanceof StreamRecord) {
 				boolean dataIsOnTime = highestWatermark < ((StreamRecord) elem).getTimestamp();
-				// TODO: Wording
 				Assert.assertTrue("Late data was emitted after join", dataIsOnTime);
-			} else {
-				// TODO: What to do here?
-				throw new Exception("Unexpected conditions");
 			}
 		}
 	}
