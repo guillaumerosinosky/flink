@@ -17,6 +17,26 @@ public abstract class JoinedProcessFunction<I, O> extends AbstractRichFunction {
 	 * @param out
 	 * @throws Exception
 	 */
-	public abstract void processElement(I value, TimeBoundedStreamJoinOperator.Context ctx, Collector<O> out) throws Exception;
+	public abstract void processElement(I value, Context ctx, Collector<O> out) throws Exception;
 
+	/**
+	 * The Context that gets passed to processElement.
+	 */
+	public abstract class Context {
+
+		/**
+		 * @return The timestamp of the left element that resulted in a join
+		 */
+		public abstract long getLeftTimestamp();
+
+		/**
+		 * @return The timestamp of the right element that resulted in a join
+		 */
+		public abstract long getRightTimestamp();
+
+		/**
+		 * @return The timestamp of the joined tuple
+		 */
+		public abstract long getTimestamp();
+	}
 }
