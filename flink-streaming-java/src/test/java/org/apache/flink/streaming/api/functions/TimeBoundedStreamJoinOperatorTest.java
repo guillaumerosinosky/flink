@@ -41,6 +41,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
 // TODO: Parameterize to use different state backends --> This would require circular dependency on flink rocksdb
+
+/**
+ * Tests for {@link TimeBoundedStreamJoinOperator}.
+ * Those tests cover correctness and cleaning of state
+ */
 @RunWith(Parameterized.class)
 public class TimeBoundedStreamJoinOperatorTest {
 
@@ -64,9 +69,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = -1;
 		boolean upperBoundInclusive = true;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
-				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
-
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -95,8 +99,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 1;
 		boolean upperBoundInclusive = true;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
-				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -132,8 +136,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		boolean lowerBoundInclusive = true;
 		boolean upperBoundInclusive = true;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
-				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -161,8 +165,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = -1;
 		boolean upperBoundInclusive = false;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
-				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -188,8 +192,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 1;
 		boolean upperBoundInclusive = false;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
-				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -217,8 +221,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 3;
 		boolean upperBoundInclusive = false;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness
-				 = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
+		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
 			testHarness.open();
@@ -257,13 +261,13 @@ public class TimeBoundedStreamJoinOperatorTest {
 			String,
 			TestElem,
 			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= new KeyedTwoInputStreamOperatorTestHarness<>(
-			operator,
-			(elem) -> elem.key, // key
-			(elem) -> elem.key, // key
-			TypeInformation.of(String.class)
-		);
+			Tuple2<TestElem, TestElem>> testHarness =
+			new KeyedTwoInputStreamOperatorTestHarness<>(
+				operator,
+				(elem) -> elem.key, // key
+				(elem) -> elem.key, // key
+				TypeInformation.of(String.class)
+			);
 
 		testHarness.setup();
 		testHarness.open();
@@ -331,8 +335,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 			String,
 			TestElem,
 			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness
-			= createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+			Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
 		testHarness.setup();
 		testHarness.open();
@@ -355,7 +359,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		testHarness.processElement2(createStreamRecord(3, "rhs"));
 		testHarness.processWatermark2(new Watermark(3));
-
 
 		// snapshot and validate output
 		OperatorStateHandles handles = testHarness.snapshot(0, 0);
@@ -381,7 +384,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 			TestElem,
 			Tuple2<TestElem, TestElem>
 			> newTestHarness = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
-
 
 		newTestHarness.setup();
 		newTestHarness.initializeState(handles);
@@ -460,18 +462,17 @@ public class TimeBoundedStreamJoinOperatorTest {
 		TestElem,
 		TestElem,
 		Tuple2<TestElem, TestElem>> createTestHarness(long lowerBound,
-													  boolean lowerBoundInclusive,
-													  long upperBound,
-													  boolean upperBoundInclusive) throws Exception {
+		boolean lowerBoundInclusive,
+		long upperBound,
+		boolean upperBoundInclusive) throws Exception {
 
-		TimeBoundedStreamJoinOperator<
-			TestElem,
-			TestElem> operator
-			= new TimeBoundedStreamJoinOperator<>(
-			lowerBound,
-			upperBound,
-			lowerBoundInclusive,
-			upperBoundInclusive);
+		TimeBoundedStreamJoinOperator<TestElem, TestElem> operator =
+			new TimeBoundedStreamJoinOperator<>(
+				lowerBound,
+				upperBound,
+				lowerBoundInclusive,
+				upperBoundInclusive
+			);
 
 		return new KeyedTwoInputStreamOperatorTestHarness<>(
 			operator,
@@ -482,7 +483,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	private StreamRecord<Tuple2<TestElem, TestElem>> streamRecordOf(long lhsTs,
-																	long rhsTs) {
+		long rhsTs) {
 		TestElem lhs = new TestElem(lhsTs, "lhs");
 		TestElem rhs = new TestElem(rhsTs, "rhs");
 
@@ -503,13 +504,24 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		@Override
 		public boolean equals(Object o) {
-			if (this == o) return true;
-			if (o == null || getClass() != o.getClass()) return false;
+			if (this == o) {
+				return true;
+			}
+
+			if (o == null || getClass() != o.getClass()) {
+				return false;
+			}
 
 			TestElem testElem = (TestElem) o;
 
-			if (ts != testElem.ts) return false;
-			if (key != null ? !key.equals(testElem.key) : testElem.key != null) return false;
+			if (ts != testElem.ts) {
+				return false;
+			}
+
+			if (key != null ? !key.equals(testElem.key) : testElem.key != null) {
+				return false;
+			}
+
 			return source != null ? source.equals(testElem.source) : testElem.source == null;
 		}
 
@@ -532,7 +544,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 		return new StreamRecord<>(testElem, ts);
 	}
 
-	private void prepareTestHarness(KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness) throws Exception {
+	private void prepareTestHarness(
+		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness) throws Exception {
 		if (lhsFasterThanRhs) {
 			// add to lhs
 			testHarness.processElement1(createStreamRecord(1, "lhs"));
