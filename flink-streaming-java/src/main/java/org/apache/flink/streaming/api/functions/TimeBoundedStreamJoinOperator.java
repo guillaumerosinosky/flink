@@ -87,6 +87,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 
 	private transient TimestampedCollector<OUT> collector;
 
+	private ContextImpl context;
+
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
 	 *
@@ -127,6 +129,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	public void open() throws Exception {
 		super.open();
 		collector = new TimestampedCollector<>(output);
+		context = new ContextImpl(userFunction);
 
 		Class<Tuple3<T1, Long, Boolean>> leftTypedTuple =
 			(Class<Tuple3<T1, Long, Boolean>>) (Class<?>) Tuple3.class;
@@ -213,6 +216,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		}
 	}
 
+	// TODO: Add JavaDoc
 	@Override
 	public void processElement2(StreamRecord<T2> record) throws Exception {
 
@@ -258,10 +262,10 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	}
 
 	private void collect(T1 left, T2 right, long leftTs, long rightTs) throws Exception {
-		Tuple2<T1, T2> out = Tuple2.of(left, right);
-		this.collector.setAbsoluteTimestamp(leftTs);
-		ContextImpl ctx = new ContextImpl(leftTs, rightTs);
-		userFunction.processElement(out, ctx, collector);
+		collector.setAbsoluteTimestamp(leftTs);
+		context.leftTs = leftTs;
+		context.rightTs = rightTs;
+		userFunction.processElement(left, right, context, this.collector);
 	}
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
@@ -354,13 +358,11 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 
 	private class ContextImpl extends JoinedProcessFunction<T1, T2, OUT>.Context {
 
-		private final long leftTs;
-		private final long rightTs;
+		private long leftTs;
+		private long rightTs;
 
-		public ContextImpl(JoinedProcessFunction<T1, T2, OUT> func, long leftTs, long rightTs) {
+		public ContextImpl(JoinedProcessFunction<T1, T2, OUT> func) {
 			func.super();
-			this.leftTs = leftTs;
-			this.rightTs = rightTs;
 		}
 
 		public long getLeftTimestamp() {

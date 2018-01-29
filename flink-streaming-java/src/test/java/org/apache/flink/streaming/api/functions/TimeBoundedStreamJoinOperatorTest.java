@@ -425,13 +425,14 @@ public class TimeBoundedStreamJoinOperatorTest {
 				true,
 				TestElem.serializer(),
 				TestElem.serializer(),
-				new JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>>() {
+				new JoinedProcessFunction<TestElem, TestElem, Tuple2<TestElem, TestElem>>() {
 					@Override
 					public void processElement(
-						Tuple2<TestElem, TestElem> value,
-						TimeBoundedStreamJoinOperator.Context ctx,
+						TestElem left,
+						TestElem right,
+						Context ctx,
 						Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
-						Assert.assertEquals(value.f0.ts, ctx.getLeftTimestamp());
+						Assert.assertEquals(left.ts, ctx.getLeftTimestamp());
 					}
 				}
 			);
@@ -462,13 +463,14 @@ public class TimeBoundedStreamJoinOperatorTest {
 				true,
 				TestElem.serializer(),
 				TestElem.serializer(),
-				new JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>>() {
+				new JoinedProcessFunction<TestElem, TestElem, Tuple2<TestElem, TestElem>>() {
 					@Override
 					public void processElement(
-						Tuple2<TestElem, TestElem> value,
-						TimeBoundedStreamJoinOperator.Context ctx,
+						TestElem left,
+						TestElem right,
+						Context ctx,
 						Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
-						Assert.assertEquals(value.f1.ts, ctx.getRightTimestamp());
+						Assert.assertEquals(right.ts, ctx.getRightTimestamp());
 					}
 				}
 			);
@@ -566,14 +568,15 @@ public class TimeBoundedStreamJoinOperatorTest {
 		);
 	}
 
-	private static class PassthroughFunction extends JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>> {
+	private static class PassthroughFunction extends JoinedProcessFunction<TestElem, TestElem, Tuple2<TestElem, TestElem>> {
 
 		@Override
 		public void processElement(
-			Tuple2<TestElem, TestElem> value,
-			TimeBoundedStreamJoinOperator.Context ctx,
+			TestElem left,
+			TestElem right,
+			Context ctx,
 			Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
-			out.collect(value);
+			out.collect(Tuple2.of(left, right));
 		}
 	}
 
