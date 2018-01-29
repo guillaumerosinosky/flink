@@ -27,7 +27,7 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -39,7 +39,7 @@ import java.util.List;
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
-
+// TODO: Update JavaDoc
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
  *
@@ -50,9 +50,9 @@ import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
  * @param <T1> The type of the elements in the left stream
  * @param <T2> The type of the elements in the right stream
  */
-public class TimeBoundedStreamJoinOperator<T1, T2>
-	extends AbstractStreamOperator<Tuple2<T1, T2>>
-	implements TwoInputStreamOperator<T1, T2, Tuple2<T1, T2>> {
+public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
+	extends AbstractUdfStreamOperator<OUT, JoinedProcessFunction<Tuple2<T1, T2>, OUT>>
+	implements TwoInputStreamOperator<T1, T2, OUT> {
 
 	private final long lowerBound;
 	private final long upperBound;
@@ -76,7 +76,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
-	private transient TimestampedCollector<Tuple2<T1, T2>> collector;
+	private transient TimestampedCollector<OUT> collector;
 
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
@@ -92,8 +92,11 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		long lowerBound,
 		long upperBound,
 		boolean lowerBoundInclusive,
-		boolean upperBoundInclusive
+		boolean upperBoundInclusive,
+		JoinedProcessFunction<Tuple2<T1, T2>, OUT> udf
 	) {
+
+		super(udf);
 
 		this.lowerBound = lowerBound;
 		this.upperBound = upperBound;
@@ -166,7 +169,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 					if (shouldBeJoined(leftTs, tuple.f1)) {
 
 						// collect joined tuple with left timestamp
-						collect(leftValue, tuple.f0, leftTs);
+						collect(leftValue, tuple.f0, leftTs, tuple.f1);
 					}
 				}
 			}
@@ -195,7 +198,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 					if (shouldBeJoined(tuple.f1, rightTs)) {
 
 						// collect joined tuple with left timestamp
-						collect(tuple.f0, rightElem, tuple.f1);
+						collect(tuple.f0, rightElem, tuple.f1, rightTs);
 					}
 				}
 			}
@@ -217,10 +220,11 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 		output.emitWatermark(new Watermark(mark.getTimestamp() - getWatermarkDelay()));
 	}
 
-	private void collect(T1 left, T2 right, long ts) {
+	private void collect(T1 left, T2 right, long leftTs, long rightTs) throws Exception {
 		Tuple2<T1, T2> out = Tuple2.of(left, right);
-		this.collector.setAbsoluteTimestamp(ts);
-		this.collector.collect(out);
+		this.collector.setAbsoluteTimestamp(leftTs);
+		Context ctx = new Context(leftTs, rightTs);
+		userFunction.processElement(out, ctx, collector);
 	}
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
@@ -309,6 +313,25 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 	public long getWatermarkDelay() {
 		// TODO: Adapt this to when we use the rightBuffer or min timestamp
 		return (upperBound < 0) ? 0 : upperBound;
+	}
+
+	public class Context {
+
+		private final long leftTs;
+		private final long rightTs;
+
+		public Context(long leftTs, long rightTs) {
+			this.leftTs = leftTs;
+			this.rightTs = rightTs;
+		}
+
+		public long getLeftTimestamp() {
+			return leftTs;
+		}
+
+		public long getRightTimestamp() {
+			return rightTs;
+		}
 	}
 
 	@VisibleForTesting
