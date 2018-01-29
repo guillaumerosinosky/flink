@@ -34,7 +34,6 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
@@ -151,10 +150,25 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 
 		addToLeftBuffer(leftValue, leftTs);
 
-		getJoinCandidatesForLeftElement(leftTs)
-			.stream()
-			.filter(rightCandidate -> shouldBeJoined(leftTs, rightCandidate.f1))
-			.forEach(rightValue -> this.collect(leftValue, rightValue.f0, leftTs));
+		long min = leftTs + lowerBound;
+		long max = leftTs + upperBound;
+
+		// TODO: Adapt to different bucket sizes here
+		// Go over all buckets that are within the time bounds
+		for (long i = min; i <= max; i++) {
+			List<Tuple3<T2, Long, Boolean>> fromBucket = rightBuffer.get(i);
+			if (fromBucket != null) {
+
+				// check for each element in current bucket if it should be joined
+				for (Tuple3<T2, Long, Boolean> tuple : fromBucket) {
+					if (shouldBeJoined(leftTs, tuple.f1)) {
+
+						// collect joined tuple with left timestamp
+						collect(leftValue, tuple.f0, leftTs);
+					}
+				}
+			}
+		}
 	}
 
 	@Override
@@ -165,10 +179,25 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 
 		addToRightBuffer(rightElem, rightTs);
 
-		getJoinCandidatesForRightElement(rightTs)
-			.stream()
-			.filter(leftCandidate -> shouldBeJoined(leftCandidate.f1, rightTs))
-			.forEach(leftValue -> this.collect(leftValue.f0, rightElem, leftValue.f1));
+		long min = rightTs + inverseLowerBound;
+		long max = rightTs + inverseUpperBound;
+
+		// TODO: Adapt to different bucket sizes here
+		// Go over all buckets that are within the time bounds
+		for (long i = min; i <= max; i++) {
+			List<Tuple3<T1, Long, Boolean>> fromBucket = leftBuffer.get(i);
+			if (fromBucket != null) {
+
+				// check for each element in current bucket if it should be joined
+				for (Tuple3<T1, Long, Boolean> tuple : fromBucket) {
+					if (shouldBeJoined(tuple.f1, rightTs)) {
+
+						// collect joined tuple with left timestamp
+						collect(tuple.f0, rightElem, tuple.f1);
+					}
+				}
+			}
+		}
 	}
 
 	@Override
@@ -237,42 +266,6 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 			: (rightTs < elemUpperBound);
 
 		return lowerBoundOk && upperBoundOk;
-	}
-
-	private List<Tuple3<T2, Long, Boolean>> getJoinCandidatesForLeftElement(long ts) throws Exception {
-
-		long min = ts + lowerBound;
-		long max = ts + upperBound;
-
-		List<Tuple3<T2, Long, Boolean>> candidates = new LinkedList<>();
-
-		// TODO: Adapt to granularity here
-		for (long i = min; i <= max; i++) {
-			List<Tuple3<T2, Long, Boolean>> fromBucket = rightBuffer.get(i);
-			if (fromBucket != null) {
-				candidates.addAll(fromBucket);
-			}
-		}
-
-		return candidates;
-	}
-
-	private List<Tuple3<T1, Long, Boolean>> getJoinCandidatesForRightElement(long ts) throws Exception {
-
-		long min = ts + inverseLowerBound;
-		long max = ts + inverseUpperBound;
-
-		List<Tuple3<T1, Long, Boolean>> candidates = new LinkedList<>();
-
-		// TODO: Adapt to different bucket sizes here
-		for (long i = min; i <= max; i++) {
-			List<Tuple3<T1, Long, Boolean>> fromBucket = leftBuffer.get(i);
-			if (fromBucket != null) {
-				candidates.addAll(fromBucket);
-			}
-		}
-
-		return candidates;
 	}
 
 	private void addToLeftBuffer(T1 value, long ts) throws Exception {
