@@ -25,6 +25,7 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.util.KeyedTwoInputStreamOperatorTestHarness;
+import org.apache.flink.util.Collector;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
@@ -242,6 +243,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	@Test
+	// TODO: Naming: Test at the end vs. beginning?
 	public void stateGetsCleanedWhenNotNeeded() throws Exception {
 
 		long lowerBound = 1;
@@ -250,11 +252,12 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 2;
 		boolean upperBoundInclusive = true;
 
-		TimeBoundedStreamJoinOperator<TestElem, TestElem> operator = new TimeBoundedStreamJoinOperator<>(
+		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
-			upperBoundInclusive
+			upperBoundInclusive,
+			new PassthroughFunction()
 		);
 
 		KeyedTwoInputStreamOperatorTestHarness<
@@ -407,6 +410,76 @@ public class TimeBoundedStreamJoinOperatorTest {
 		assertOutput(expectedOutput, newTestHarness.getOutput());
 	}
 
+	@Test
+	public void testContextCorrectLeftTimestamp() throws Exception {
+
+		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
+			new TimeBoundedStreamJoinOperator<>(
+				-1,
+				1,
+				true,
+				true,
+				new JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>>() {
+					@Override
+					public void processElement(
+						Tuple2<TestElem, TestElem> value,
+						TimeBoundedStreamJoinOperator.Context ctx,
+						Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
+						Assert.assertEquals(value.f0.ts, ctx.getLeftTimestamp());
+					}
+				}
+			);
+
+		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness = new KeyedTwoInputStreamOperatorTestHarness<>(
+			op,
+			(elem) -> elem.key,
+			(elem) -> elem.key,
+			TypeInformation.of(String.class)
+		);
+
+		testHarness.setup();
+		testHarness.open();
+
+		prepareTestHarness(testHarness);
+
+		testHarness.close();
+	}
+
+	@Test
+	public void testContextCorrectRightTimestamp() throws Exception {
+
+		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
+			new TimeBoundedStreamJoinOperator<>(
+				-1,
+				1,
+				true,
+				true,
+				new JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>>() {
+					@Override
+					public void processElement(
+						Tuple2<TestElem, TestElem> value,
+						TimeBoundedStreamJoinOperator.Context ctx,
+						Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
+						Assert.assertEquals(value.f1.ts, ctx.getRightTimestamp());
+					}
+				}
+			);
+
+		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness = new KeyedTwoInputStreamOperatorTestHarness<>(
+			op,
+			(elem) -> elem.key,
+			(elem) -> elem.key,
+			TypeInformation.of(String.class)
+		);
+
+		testHarness.setup();
+		testHarness.open();
+
+		prepareTestHarness(testHarness);
+
+		testHarness.close();
+	}
+
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
 		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
 		Assert.assertTrue("state not empty", stateIsEmpty);
@@ -466,12 +539,13 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound,
 		boolean upperBoundInclusive) throws Exception {
 
-		TimeBoundedStreamJoinOperator<TestElem, TestElem> operator =
+		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> operator =
 			new TimeBoundedStreamJoinOperator<>(
 				lowerBound,
 				upperBound,
 				lowerBoundInclusive,
-				upperBoundInclusive
+				upperBoundInclusive,
+				new PassthroughFunction()
 			);
 
 		return new KeyedTwoInputStreamOperatorTestHarness<>(
@@ -480,6 +554,17 @@ public class TimeBoundedStreamJoinOperatorTest {
 			(elem) -> elem.key, // key
 			TypeInformation.of(String.class)
 		);
+	}
+
+	private static class PassthroughFunction extends JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>> {
+
+		@Override
+		public void processElement(
+			Tuple2<TestElem, TestElem> value,
+			TimeBoundedStreamJoinOperator.Context ctx,
+			Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
+			out.collect(value);
+		}
 	}
 
 	private StreamRecord<Tuple2<TestElem, TestElem>> streamRecordOf(long lhsTs,
@@ -544,6 +629,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		return new StreamRecord<>(testElem, ts);
 	}
 
+	// TODO: Rename this
 	private void prepareTestHarness(
 		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness) throws Exception {
 		if (lhsFasterThanRhs) {
