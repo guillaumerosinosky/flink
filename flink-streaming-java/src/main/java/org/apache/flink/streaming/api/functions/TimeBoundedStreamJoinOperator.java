@@ -57,7 +57,7 @@ import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
  * @param <OUT> The output type created by the user-defined function
  */
 public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
-	extends AbstractUdfStreamOperator<OUT, JoinedProcessFunction<Tuple2<T1, T2>, OUT>>
+	extends AbstractUdfStreamOperator<OUT, JoinedProcessFunction<T1, T2, OUT>>
 	implements TwoInputStreamOperator<T1, T2, OUT> {
 
 	private final long lowerBound;
@@ -106,7 +106,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		boolean upperBoundInclusive,
 		TypeSerializer<T1> leftTypeSerializer,
 		TypeSerializer<T2> rightTypeSerializer,
-		JoinedProcessFunction<Tuple2<T1, T2>, OUT> udf
+		JoinedProcessFunction<T1, T2, OUT> udf
 	) {
 
 		super(udf);
@@ -352,13 +352,13 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		return (upperBound < 0) ? 0 : upperBound;
 	}
 
-	private class ContextImpl
-		extends JoinedProcessFunction<Tuple2<T1, T2>, OUT>.Context {
+	private class ContextImpl extends JoinedProcessFunction<T1, T2, OUT>.Context {
 
 		private final long leftTs;
 		private final long rightTs;
 
-		public Context(long leftTs, long rightTs) {
+		public ContextImpl(JoinedProcessFunction<T1, T2, OUT> func, long leftTs, long rightTs) {
+			func.super();
 			this.leftTs = leftTs;
 			this.rightTs = rightTs;
 		}
