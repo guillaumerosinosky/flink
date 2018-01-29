@@ -1,6 +1,7 @@
 package org.apache.flink.streaming.api.functions;
 
 import org.apache.flink.api.common.functions.AbstractRichFunction;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Collector;
 
 /**
@@ -8,7 +9,7 @@ import org.apache.flink.util.Collector;
  * @param <I>
  * @param <O>
  */
-public abstract class JoinedProcessFunction<I, O> extends AbstractRichFunction {
+public abstract class JoinedProcessFunction<IN1, IN2, OUT> extends AbstractRichFunction {
 
 	/**
 	 * TODO: Add JavaDoc.
@@ -17,7 +18,7 @@ public abstract class JoinedProcessFunction<I, O> extends AbstractRichFunction {
 	 * @param out
 	 * @throws Exception
 	 */
-	public abstract void processElement(I value, Context ctx, Collector<O> out) throws Exception;
+	public abstract void processElement(Tuple2<IN1, IN2> value, Context ctx, Collector<OUT> out) throws Exception;
 
 	/**
 	 * The Context that gets passed to processElement.
