@@ -18,7 +18,7 @@ public abstract class JoinedProcessFunction<IN1, IN2, OUT> extends AbstractRichF
 	 * @param out
 	 * @throws Exception
 	 */
-	public abstract void processElement(Tuple2<IN1, IN2> value, Context ctx, Collector<OUT> out) throws Exception;
+	public abstract void processElement(IN1 left, IN2 right, Context ctx, Collector<OUT> out) throws Exception;
 
 	/**
 	 * The Context that gets passed to processElement.
