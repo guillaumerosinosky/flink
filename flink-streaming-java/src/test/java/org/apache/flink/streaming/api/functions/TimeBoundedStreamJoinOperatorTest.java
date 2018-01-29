@@ -18,8 +18,11 @@
 
 package org.apache.flink.streaming.api.functions;
 
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.MapState;
+import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -257,6 +260,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 			upperBound,
 			lowerBoundInclusive,
 			upperBoundInclusive,
+			TestElem.serializer(),
+			TestElem.serializer(),
 			new PassthroughFunction()
 		);
 
@@ -419,6 +424,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 				1,
 				true,
 				true,
+				TestElem.serializer(),
+				TestElem.serializer(),
 				new JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>>() {
 					@Override
 					public void processElement(
@@ -454,6 +461,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 				1,
 				true,
 				true,
+				TestElem.serializer(),
+				TestElem.serializer(),
 				new JoinedProcessFunction<Tuple2<TestElem, TestElem>, Tuple2<TestElem, TestElem>>() {
 					@Override
 					public void processElement(
@@ -545,6 +554,8 @@ public class TimeBoundedStreamJoinOperatorTest {
 				upperBound,
 				lowerBoundInclusive,
 				upperBoundInclusive,
+				TestElem.serializer(),
+				TestElem.serializer(),
 				new PassthroughFunction()
 			);
 
@@ -621,6 +632,11 @@ public class TimeBoundedStreamJoinOperatorTest {
 		@Override
 		public String toString() {
 			return this.source + ":" + this.ts;
+		}
+
+		public static TypeSerializer<TestElem> serializer() {
+			return TypeInformation.of(new TypeHint<TestElem>() {
+			}).createSerializer(new ExecutionConfig());
 		}
 	}
 

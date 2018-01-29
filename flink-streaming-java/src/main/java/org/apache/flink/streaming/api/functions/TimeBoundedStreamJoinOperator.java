@@ -23,10 +23,13 @@ import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.common.typeinfo.TypeHint;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.base.BooleanSerializer;
+import org.apache.flink.api.common.typeutils.base.ListSerializer;
+import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
@@ -76,6 +79,9 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
+	private final TypeSerializer<T1> leftTypeSerializer;
+	private final TypeSerializer<T2> rightTypeSerializer;
+
 	private transient TimestampedCollector<OUT> collector;
 
 	/**
@@ -93,6 +99,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		long upperBound,
 		boolean lowerBoundInclusive,
 		boolean upperBoundInclusive,
+		TypeSerializer<T1> leftTypeSerializer,
+		TypeSerializer<T2> rightTypeSerializer,
 		JoinedProcessFunction<Tuple2<T1, T2>, OUT> udf
 	) {
 
@@ -106,6 +114,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 
 		this.lowerBoundInclusive = lowerBoundInclusive;
 		this.upperBoundInclusive = upperBoundInclusive;
+		this.leftTypeSerializer = leftTypeSerializer;
+		this.rightTypeSerializer = rightTypeSerializer;
 	}
 
 	@Override
@@ -113,18 +123,40 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		super.open();
 		collector = new TimestampedCollector<>(output);
 
+		Class<Tuple3<T1, Long, Boolean>> leftTypedTuple =
+			(Class<Tuple3<T1, Long, Boolean>>) (Class<?>) Tuple3.class;
+
+		TupleSerializer<Tuple3<T1, Long, Boolean>> leftTupleSerializer = new TupleSerializer<>(
+			leftTypedTuple,
+			new TypeSerializer[]{
+				leftTypeSerializer,
+				LongSerializer.INSTANCE,
+				BooleanSerializer.INSTANCE
+			}
+		);
+
+		Class<Tuple3<T2, Long, Boolean>> rightTypedTuple =
+			(Class<Tuple3<T2, Long, Boolean>>) (Class<?>) Tuple3.class;
+
+		TupleSerializer<Tuple3<T2, Long, Boolean>> rightTupleSerializer = new TupleSerializer<>(
+			rightTypedTuple,
+			new TypeSerializer[]{
+				rightTypeSerializer,
+				LongSerializer.INSTANCE,
+				BooleanSerializer.INSTANCE
+			}
+		);
+
 		this.leftBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
 			LEFT_BUFFER,
-			LONG_TYPE_INFO,
-			TypeInformation.of(new TypeHint<List<Tuple3<T1, Long, Boolean>>>() {
-			})
+			LongSerializer.INSTANCE,
+			new ListSerializer<>(leftTupleSerializer)
 		));
 
 		this.rightBuffer = getRuntimeContext().getMapState(new MapStateDescriptor<>(
 			RIGHT_BUFFER,
-			LONG_TYPE_INFO,
-			TypeInformation.of(new TypeHint<List<Tuple3<T2, Long, Boolean>>>() {
-			})
+			LongSerializer.INSTANCE,
+			new ListSerializer<>(rightTupleSerializer)
 		));
 
 		this.lastCleanupRightBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
