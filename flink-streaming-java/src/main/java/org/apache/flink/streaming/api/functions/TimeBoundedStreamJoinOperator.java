@@ -216,7 +216,15 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		}
 	}
 
-	// TODO: Add JavaDoc
+	/**
+	 * Process a {@link StreamRecord} from the right stream. Whenever a {@link StreamRecord}
+	 * arrives at the right stream, it will get added to the right buffer. Possible join candidates
+	 * for that element will be looked up from the left buffer and if the pair lies within the user
+	 * defined boundaries, it gets collected.
+	 *
+	 * @param record An incoming record to be joined
+	 * @throws Exception Can throw an exception during state access
+	 */
 	@Override
 	public void processElement2(StreamRecord<T2> record) throws Exception {
 
