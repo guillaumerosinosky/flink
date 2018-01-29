@@ -42,8 +42,8 @@ import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
- * <p>
- * By using a configurable lower and upper bound this operator will emit exactly those pairs
+ *
+ * <p>By using a configurable lower and upper bound this operator will emit exactly those pairs
  * (T1, T2) where t2.ts ∈ [T1.ts + lowerBound, T1.ts + upperBound]. Both the lower and the
  * upper bound can be configured to be either inclusive or exclusive.
  *
@@ -79,7 +79,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 	private transient TimestampedCollector<Tuple2<T1, T2>> collector;
 
 	/**
-	 * Creates a new TimeBoundedStreamJoinOperator
+	 * Creates a new TimeBoundedStreamJoinOperator.
 	 *
 	 * @param lowerBound          The lower bound for evaluating if elements should be joined
 	 * @param upperBound          The upper bound for evaluating if elements should be joined
@@ -88,10 +88,12 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 	 * @param upperBoundInclusive Whether or not to include elements where the timestamp matches
 	 *                            the upper bound
 	 */
-	public TimeBoundedStreamJoinOperator(long lowerBound,
-										 long upperBound,
-										 boolean lowerBoundInclusive,
-										 boolean upperBoundInclusive) {
+	public TimeBoundedStreamJoinOperator(
+		long lowerBound,
+		long upperBound,
+		boolean lowerBoundInclusive,
+		boolean upperBoundInclusive
+	) {
 
 		this.lowerBound = lowerBound;
 		this.upperBound = upperBound;
@@ -134,7 +136,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2>
 	}
 
 	/**
-	 * Process a {@link StreamRecord<T1>} from the left stream. Whenever an {@link StreamRecord<T1>}
+	 * Process a {@link StreamRecord} from the left stream. Whenever an {@link StreamRecord}
 	 * arrives at the left stream, it will get added to the left buffer. Possible join candidates
 	 * for that element will be looked up from the right buffer and if the pair lies within the
 	 * user defined boundaries, it gets collected.
