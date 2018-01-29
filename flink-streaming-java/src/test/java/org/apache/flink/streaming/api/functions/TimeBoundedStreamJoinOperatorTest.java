@@ -79,7 +79,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			testHarness.setup();
 			testHarness.open();
 
-			prepareTestHarness(testHarness);
+			processElementsAndWatermarks(testHarness);
 
 			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
 				streamRecordOf(2, 1),
@@ -109,7 +109,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			testHarness.setup();
 			testHarness.open();
 
-			prepareTestHarness(testHarness);
+			processElementsAndWatermarks(testHarness);
 
 			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
 				streamRecordOf(1, 1),
@@ -146,7 +146,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			testHarness.setup();
 			testHarness.open();
 
-			prepareTestHarness(testHarness);
+			processElementsAndWatermarks(testHarness);
 
 			List<StreamRecord<Tuple2<TestElem, TestElem>>> expected = Lists.newArrayList(
 				streamRecordOf(1, 2),
@@ -174,7 +174,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			testHarness.setup();
 			testHarness.open();
-			prepareTestHarness(testHarness);
+			processElementsAndWatermarks(testHarness);
 
 			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
 				streamRecordOf(3, 1),
@@ -201,7 +201,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			testHarness.setup();
 			testHarness.open();
-			prepareTestHarness(testHarness);
+			processElementsAndWatermarks(testHarness);
 
 			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
 				streamRecordOf(1, 1),
@@ -230,7 +230,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 			testHarness.setup();
 			testHarness.open();
-			prepareTestHarness(testHarness);
+			processElementsAndWatermarks(testHarness);
 
 			List<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput = Lists.newArrayList(
 				streamRecordOf(1, 3),
@@ -246,8 +246,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	@Test
-	// TODO: Naming: Test at the end vs. beginning?
-	public void stateGetsCleanedWhenNotNeeded() throws Exception {
+	public void testStateGetsCleanedWhenNotNeeded() throws Exception {
 
 		long lowerBound = 1;
 		boolean lowerBoundInclusive = true;
@@ -447,7 +446,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.setup();
 		testHarness.open();
 
-		prepareTestHarness(testHarness);
+		processElementsAndWatermarks(testHarness);
 
 		testHarness.close();
 	}
@@ -484,7 +483,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.setup();
 		testHarness.open();
 
-		prepareTestHarness(testHarness);
+		processElementsAndWatermarks(testHarness);
 
 		testHarness.close();
 	}
@@ -645,8 +644,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		return new StreamRecord<>(testElem, ts);
 	}
 
-	// TODO: Rename this
-	private void prepareTestHarness(
+	private void processElementsAndWatermarks(
 		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness) throws Exception {
 		if (lhsFasterThanRhs) {
 			// add to lhs

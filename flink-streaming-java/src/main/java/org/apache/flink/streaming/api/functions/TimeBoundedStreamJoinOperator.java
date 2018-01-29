@@ -42,7 +42,6 @@ import java.util.List;
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
-// TODO: Update JavaDoc
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
  *
@@ -50,8 +49,12 @@ import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
  * (T1, T2) where t2.ts ∈ [T1.ts + lowerBound, T1.ts + upperBound]. Both the lower and the
  * upper bound can be configured to be either inclusive or exclusive.
  *
+ * <p>As soon as elements are joined they are passed to a user-defined {@link JoinedProcessFunction},
+ * as a {@link Tuple2}, with f0 being the left element and f1 being the right element
+ *
  * @param <T1> The type of the elements in the left stream
  * @param <T2> The type of the elements in the right stream
+ * @param <OUT> The output type created by the user-defined function
  */
 public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	extends AbstractUdfStreamOperator<OUT, JoinedProcessFunction<Tuple2<T1, T2>, OUT>>
@@ -93,6 +96,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	 *                            the lower bound
 	 * @param upperBoundInclusive Whether or not to include elements where the timestamp matches
 	 *                            the upper bound
+	 * @param udf                 A user-defined {@link JoinedProcessFunction} that gets called
+	 *                            whenever two elements of T1 and T2 are joined
 	 */
 	public TimeBoundedStreamJoinOperator(
 		long lowerBound,
@@ -255,7 +260,7 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	private void collect(T1 left, T2 right, long leftTs, long rightTs) throws Exception {
 		Tuple2<T1, T2> out = Tuple2.of(left, right);
 		this.collector.setAbsoluteTimestamp(leftTs);
-		Context ctx = new Context(leftTs, rightTs);
+		ContextImpl ctx = new ContextImpl(leftTs, rightTs);
 		userFunction.processElement(out, ctx, collector);
 	}
 
@@ -347,7 +352,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 		return (upperBound < 0) ? 0 : upperBound;
 	}
 
-	public class Context {
+	private class ContextImpl
+		extends JoinedProcessFunction<Tuple2<T1, T2>, OUT>.Context {
 
 		private final long leftTs;
 		private final long rightTs;
@@ -363,6 +369,10 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 
 		public long getRightTimestamp() {
 			return rightTs;
+		}
+
+		public long getTimestamp() {
+			return leftTs;
 		}
 	}
 
