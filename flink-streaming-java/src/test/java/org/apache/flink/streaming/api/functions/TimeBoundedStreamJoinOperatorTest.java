@@ -490,6 +490,62 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.close();
 	}
 
+	@Test
+	public void testWorksForMultipleKeys() throws Exception {
+
+		int lowerBound = 0;
+		boolean lowerBoundInclusive = true;
+		int upperBound = 0;
+		boolean upperBoundInclusive = true;
+
+		// create first test harness
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> testHarness =
+			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+
+		testHarness.setup();
+		testHarness.open();
+
+		// left
+		testHarness.processElement1(createStreamRecord(0, "left", "keyA"));
+		testHarness.processElement1(createStreamRecord(0, "left", "keyB"));
+
+		testHarness.processElement1(createStreamRecord(1, "left", "keyA"));
+		testHarness.processElement1(createStreamRecord(1, "left", "keyB"));
+
+		testHarness.processElement1(createStreamRecord(2, "left", "keyA"));
+		testHarness.processElement1(createStreamRecord(2, "left", "keyB"));
+
+		testHarness.processElement1(createStreamRecord(3, "left", "keyA"));
+		testHarness.processElement1(createStreamRecord(3, "left", "keyB"));
+
+		testHarness.processWatermark1(new Watermark(3));
+
+		// right
+		testHarness.processElement2(createStreamRecord(0, "right", "keyA"));
+		testHarness.processElement2(createStreamRecord(0, "right", "keyB"));
+
+		testHarness.processElement2(createStreamRecord(1, "right", "keyA"));
+		testHarness.processElement2(createStreamRecord(1, "right", "keyB"));
+
+		testHarness.processElement2(createStreamRecord(2, "right", "keyA"));
+		testHarness.processElement2(createStreamRecord(2, "right", "keyB"));
+
+		testHarness.processElement2(createStreamRecord(3, "right", "keyA"));
+		testHarness.processElement2(createStreamRecord(3, "right", "keyB"));
+
+		testHarness.processWatermark2(new Watermark(3));
+
+		testHarness.close();
+
+		for (Object o : testHarness.getOutput()) {
+			System.out.println(o);
+		}
+	}
+
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
 		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
 		Assert.assertTrue("state not empty", stateIsEmpty);
@@ -595,9 +651,14 @@ public class TimeBoundedStreamJoinOperatorTest {
 		String source;
 
 		public TestElem(long ts, String source) {
-			this.key = "key";
+			this.key = "KEY";
 			this.ts = ts;
 			this.source = source;
+		}
+
+		public TestElem(long ts, String source, String key) {
+			this(ts, source);
+			this.key = key;
 		}
 
 		@Override
@@ -633,13 +694,18 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		@Override
 		public String toString() {
-			return this.source + ":" + this.ts;
+			return this.source + ":" + this.ts + ":" + this.key;
 		}
 
 		public static TypeSerializer<TestElem> serializer() {
 			return TypeInformation.of(new TypeHint<TestElem>() {
 			}).createSerializer(new ExecutionConfig());
 		}
+	}
+
+	private static StreamRecord<TestElem> createStreamRecord(long ts, String source, String key) {
+		TestElem testElem = new TestElem(ts, source, key);
+		return new StreamRecord<>(testElem, ts);
 	}
 
 	private static StreamRecord<TestElem> createStreamRecord(long ts, String source) {
