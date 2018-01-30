@@ -19,6 +19,7 @@ package org.apache.flink.streaming.api.datastream;
 
 import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.functions.CoGroupFunction;
 import org.apache.flink.api.common.functions.FlatJoinFunction;
 import org.apache.flink.api.common.functions.JoinFunction;
@@ -27,6 +28,8 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.operators.translation.WrappingFunction;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.streaming.api.datastream.CoGroupedStreams.TaggedUnion;
+import org.apache.flink.streaming.api.functions.JoinedProcessFunction;
+import org.apache.flink.streaming.api.functions.TimeBoundedStreamJoinOperator;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.evictors.Evictor;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
@@ -137,6 +140,114 @@ public class JoinedStreams<T1, T2> {
 			public <W extends Window> WithWindow<T1, T2, KEY, W> window(WindowAssigner<? super TaggedUnion<T1, T2>, W> assigner) {
 				return new WithWindow<>(input1, input2, keySelector1, keySelector2, keyType, assigner, null, null);
 			}
+
+			public PartialTimeBounded<T1, T2, KEY> from(long lowerBound) {
+				return new PartialTimeBounded<>(lowerBound, input1, input2, keySelector1, keySelector2);
+			}
+		}
+	}
+
+	public static class PartialTimeBounded<IN1, IN2, KEY> {
+
+		private long lowerBound;
+		private DataStream<IN1> left;
+		private DataStream<IN2> right;
+		private final KeySelector<IN1, KEY> keySelector1;
+		private final KeySelector<IN2, KEY> keySelector2;
+
+		public PartialTimeBounded(long lowerBound, DataStream<IN1> left, DataStream<IN2> right,
+			KeySelector<IN1, KEY> keySelector1,
+			KeySelector<IN2, KEY> keySelector2) {
+			this.lowerBound = lowerBound;
+			this.left = left;
+			this.right = right;
+			this.keySelector1 = keySelector1;
+			this.keySelector2 = keySelector2;
+		}
+
+		public TimeBounded<IN1, IN2, KEY> to(long upperBound) {
+			return new TimeBounded<>(
+				left,
+				right,
+				lowerBound,
+				upperBound,
+				true,
+				true,
+				keySelector1,
+				keySelector2
+			);
+		}
+	}
+
+	public static class TimeBounded<IN1, IN2, KEY> {
+
+		private DataStream<IN1> left;
+		private DataStream<IN2> right;
+
+		private long lowerBound;
+		private long upperBound;
+
+		private boolean lowerBoundInclusive;
+		private boolean upperBoundInclusive;
+		private final KeySelector<IN1, KEY> keySelector1;
+		private final KeySelector<IN2, KEY> keySelector2;
+
+		public TimeBounded(
+			DataStream<IN1> left,
+			DataStream<IN2> right,
+			long lowerBound,
+			long upperBound,
+			boolean lowerBoundInclusive,
+			boolean upperBoundInclusive,
+			KeySelector<IN1, KEY> keySelector1,
+			KeySelector<IN2, KEY> keySelector2) {
+
+			// TODO: Validate args
+			this.left = left;
+			this.right = right;
+
+			this.lowerBound = lowerBound;
+			this.upperBound = upperBound;
+
+			this.lowerBoundInclusive = lowerBoundInclusive;
+			this.upperBoundInclusive = upperBoundInclusive;
+			this.keySelector1 = keySelector1;
+			this.keySelector2 = keySelector2;
+		}
+
+		public <OUT> DataStream<OUT> process(JoinedProcessFunction<IN1, IN2, OUT> udf) {
+
+			ConnectedStreams<IN1, IN2> connected = left.keyBy(keySelector1).connect(right.keyBy(keySelector2));
+
+			TypeInformation<OUT> resultType = TypeExtractor.getBinaryOperatorReturnType(
+				udf,
+				JoinedProcessFunction.class, // JoinedProcessFunction<IN1, IN2, OUT>
+				0,     //						   0    1    2
+				1,
+				2,
+				new int[]{0},
+				new int[]{1},
+				TypeExtractor.NO_INDEX,
+				left.getType(),
+				right.getType(),
+				"TimeBoundedJoin",
+				false);
+
+			return connected
+				//.keyBy(keySelector1, keySelector2)
+				.transform(
+					"TimeBoundedJoin",
+					resultType,
+					new TimeBoundedStreamJoinOperator<>(
+						lowerBound,
+						upperBound,
+						lowerBoundInclusive,
+						upperBoundInclusive,
+						left.getType().createSerializer(new ExecutionConfig()),
+						right.getType().createSerializer(new ExecutionConfig()),
+						udf
+					));
+
 		}
 	}
 

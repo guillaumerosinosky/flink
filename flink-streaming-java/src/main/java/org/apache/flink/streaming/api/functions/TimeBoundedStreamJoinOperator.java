@@ -30,11 +30,17 @@ import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.util.Collector;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -82,12 +88,48 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
+	//	TODO: Should those be transient? What should be transient and why?
 	private final TypeSerializer<T1> leftTypeSerializer;
 	private final TypeSerializer<T2> rightTypeSerializer;
 
 	private transient TimestampedCollector<OUT> collector;
 
 	private ContextImpl context;
+
+	public static void main(String[] args) throws Exception {
+
+		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+		// TODO: how to validate that this is given?
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+
+		DataStream<Long> first = env
+			.fromElements(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L);
+
+		DataStream<Long> second = env
+			.fromElements(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L);
+
+		first.join(second)
+			.where(elem -> "a")
+			.equalTo(elem -> "a")
+			.from(1)
+			.to(1)
+			.process(new JoinedProcessFunction<Long, Long, String>() {
+				@Override
+				public void processElement(Long left, Long right, Context ctx,
+					Collector<String> out) throws Exception {
+
+					System.out.println("Nice");
+					ctx.getLeftTimestamp();
+					ctx.getRightTimestamp();
+					ctx.getTimestamp();
+
+					System.out.println(left + " " + right);
+				}
+			});
+
+		env.execute();
+	}
 
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
