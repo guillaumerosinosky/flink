@@ -278,13 +278,12 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
 
-		// setup state
-		if (this.lastCleanupRightBuffer.value() == null) {
-			this.lastCleanupRightBuffer.update(0L);
+		Long lastCleanUpRight = lastCleanupRightBuffer.value();
+		if (lastCleanUpRight == null) {
+			lastCleanUpRight = 0L;
 		}
 
 		// remove elements from leftBuffer in range [lastValue, maxCleanup]
-		Long lastCleanUpRight = lastCleanupRightBuffer.value();
 		for (long i = lastCleanUpRight; i <= maxCleanup; i++) {
 			leftBuffer.remove(i);
 		}
@@ -294,13 +293,12 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 
 	private void removeFromRhsUntil(long maxCleanup) throws Exception {
 
-		// setup state
-		if (this.lastCleanupLeftBuffer.value() == null) {
-			this.lastCleanupLeftBuffer.update(0L);
+		Long lastCleanupLeft = lastCleanupLeftBuffer.value();
+		if (lastCleanupLeft == null) {
+			lastCleanupLeft = 0L;
 		}
 
 		// remove elements from rightBuffer in range [lastValue, maxCleanup]
-		Long lastCleanupLeft = lastCleanupLeftBuffer.value();
 		for (long i = lastCleanupLeft; i <= maxCleanup; i++) {
 			rightBuffer.remove(i);
 		}
