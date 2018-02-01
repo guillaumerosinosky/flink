@@ -30,8 +30,12 @@ import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
+import org.apache.flink.runtime.state.VoidNamespace;
+import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
+import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
+import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -42,23 +46,24 @@ import java.util.List;
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
+
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
- *
+ * <p>
  * <p>By using a configurable lower and upper bound this operator will emit exactly those pairs
  * (T1, T2) where t2.ts ∈ [T1.ts + lowerBound, T1.ts + upperBound]. Both the lower and the
  * upper bound can be configured to be either inclusive or exclusive.
- *
+ * <p>
  * <p>As soon as elements are joined they are passed to a user-defined {@link JoinedProcessFunction},
  * as a {@link Tuple2}, with f0 being the left element and f1 being the right element
  *
- * @param <T1> The type of the elements in the left stream
- * @param <T2> The type of the elements in the right stream
+ * @param <T1>  The type of the elements in the left stream
+ * @param <T2>  The type of the elements in the right stream
  * @param <OUT> The output type created by the user-defined function
  */
-public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
+public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	extends AbstractUdfStreamOperator<OUT, JoinedProcessFunction<T1, T2, OUT>>
-	implements TwoInputStreamOperator<T1, T2, OUT> {
+	implements TwoInputStreamOperator<T1, T2, OUT>, Triggerable<K, VoidNamespace> {
 
 	private final long lowerBound;
 	private final long upperBound;
@@ -88,6 +93,8 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	private transient TimestampedCollector<OUT> collector;
 
 	private ContextImpl context;
+
+	private Watermark lastWatermark;
 
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
@@ -214,6 +221,20 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 				}
 			}
 		}
+
+		registerCleanupTimer();
+
+	}
+
+	private void registerCleanupTimer() {
+		if (this.lastWatermark == null) {
+			return;
+		}
+
+		long triggerTime = this.lastWatermark.getTimestamp() + 1;
+
+		getInternalTimerService("cleanup-timer", VoidNamespaceSerializer.INSTANCE, this)
+			.registerEventTimeTimer(VoidNamespace.INSTANCE, triggerTime);
 	}
 
 	/**
@@ -252,20 +273,25 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 				}
 			}
 		}
+
+		registerCleanupTimer();
 	}
 
 	@Override
 	public void processWatermark(Watermark mark) throws Exception {
 
-		// remove from both sides all those elements where the timestamp is less than the lower
-		// bound, because they are not considered for joining anymore
-		removeFromLhsUntil(mark.getTimestamp() + inverseLowerBound);
-		removeFromRhsUntil(mark.getTimestamp() + lowerBound);
+		// We can not clean our state here directly because we are not in a keyed context. Instead
+		// we set a field containing the last watermark that we have seen, and for every element in
+		// processElement1(...) / processElement2(...) we register a timer with time: watermark + 1
+		// This watermark + 1 will then trigger the onEventTime(...) method for the next watermark,
+		// where we are in a keyed context again, which we can use to clean up our state.
+		this.lastWatermark = mark;
 
 		if (timeServiceManager != null) {
 			timeServiceManager.advanceWatermark(mark);
 		}
 
+		// emit the watermark with the calculated delay, so we don't produce late data
 		output.emitWatermark(new Watermark(mark.getTimestamp() - getWatermarkDelay()));
 	}
 
@@ -360,6 +386,20 @@ public class TimeBoundedStreamJoinOperator<T1, T2, OUT>
 	public long getWatermarkDelay() {
 		// TODO: Adapt this to when we use the rightBuffer or min timestamp
 		return (upperBound < 0) ? 0 : upperBound;
+	}
+
+	@Override
+	public void onEventTime(InternalTimer<K, VoidNamespace> timer) throws Exception {
+
+		// remove from both sides all those elements where the timestamp is less than the lower
+		// bound, because they are not considered for joining anymore
+		removeFromLhsUntil(timer.getTimestamp() + inverseLowerBound);
+		removeFromRhsUntil(timer.getTimestamp() + lowerBound);
+	}
+
+	@Override
+	public void onProcessingTime(InternalTimer<K, VoidNamespace> timer) throws Exception {
+		// do nothing
 	}
 
 	private class ContextImpl extends JoinedProcessFunction<T1, T2, OUT>.Context {
