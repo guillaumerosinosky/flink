@@ -40,6 +40,7 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
@@ -254,7 +255,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 2;
 		boolean upperBoundInclusive = true;
 
-		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
+		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
@@ -289,13 +290,13 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.processWatermark2(new Watermark(1));
 
 		assertContainsOnly(operator.getLeftBuffer(), 1);
-		assertEmpty(operator.getRightBuffer());
+		assertContainsOnly(operator.getRightBuffer(), 1);
 
 		testHarness.processElement1(createStreamRecord(2, "lhs"));
 		testHarness.processWatermark1(new Watermark(2));
 
 		assertContainsOnly(operator.getLeftBuffer(), 1, 2);
-		assertEmpty(operator.getRightBuffer());
+		assertContainsOnly(operator.getRightBuffer(), 1);
 
 		testHarness.processElement2(createStreamRecord(2, "rhs"));
 		testHarness.processWatermark2(new Watermark(2));
@@ -417,7 +418,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	@Test
 	public void testContextCorrectLeftTimestamp() throws Exception {
 
-		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
+		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
 			new TimeBoundedStreamJoinOperator<>(
 				-1,
 				1,
@@ -455,7 +456,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	@Test
 	public void testContextCorrectRightTimestamp() throws Exception {
 
-		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
+		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
 			new TimeBoundedStreamJoinOperator<>(
 				-1,
 				1,
@@ -492,6 +493,13 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
 		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
+
+		if (!stateIsEmpty) {
+			for (Map.Entry<Long, ?> o : state.entries()) {
+				System.out.println(o);
+			}
+		}
+
 		Assert.assertTrue("state not empty", stateIsEmpty);
 	}
 
@@ -549,7 +557,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound,
 		boolean upperBoundInclusive) throws Exception {
 
-		TimeBoundedStreamJoinOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> operator =
+		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator =
 			new TimeBoundedStreamJoinOperator<>(
 				lowerBound,
 				upperBound,
