@@ -18,6 +18,7 @@
 
 package org.apache.flink.streaming.api.functions;
 
+import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -39,6 +40,7 @@ import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -124,6 +126,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		super(udf);
 
+		Preconditions.checkArgument(lowerBound <= upperBound, "lowerBound <= upperBound must be fulfilled");
+
 		this.lowerBound = lowerBound;
 		this.upperBound = upperBound;
 
@@ -132,8 +136,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		this.lowerBoundInclusive = lowerBoundInclusive;
 		this.upperBoundInclusive = upperBoundInclusive;
-		this.leftTypeSerializer = leftTypeSerializer;
-		this.rightTypeSerializer = rightTypeSerializer;
+		this.leftTypeSerializer = Preconditions.checkNotNull(leftTypeSerializer);
+		this.rightTypeSerializer = Preconditions.checkNotNull(rightTypeSerializer);
 
 		this.bucketGranularity = bucketGranularity;
 	}
@@ -144,6 +148,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		collector = new TimestampedCollector<>(output);
 		context = new ContextImpl(userFunction);
 
+		@SuppressWarnings("unchecked")
 		Class<Tuple3<T1, Long, Boolean>> leftTypedTuple =
 			(Class<Tuple3<T1, Long, Boolean>>) (Class<?>) Tuple3.class;
 
@@ -156,6 +161,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			}
 		);
 
+		@SuppressWarnings("unchecked")
 		Class<Tuple3<T2, Long, Boolean>> rightTypedTuple =
 			(Class<Tuple3<T2, Long, Boolean>>) (Class<?>) Tuple3.class;
 
@@ -415,7 +421,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		return Math.floorDiv(ts, bucketGranularity) * bucketGranularity;
 	}
 
-	public long getWatermarkDelay() {
+	private long getWatermarkDelay() {
 		return (upperBound < 0) ? 0 : upperBound;
 	}
 
@@ -438,7 +444,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		private long leftTs;
 		private long rightTs;
 
-		public ContextImpl(JoinedProcessFunction<T1, T2, OUT> func) {
+		private ContextImpl(JoinedProcessFunction<T1, T2, OUT> func) {
 			func.super();
 		}
 
