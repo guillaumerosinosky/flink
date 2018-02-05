@@ -46,19 +46,18 @@ import java.util.List;
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
 // TODO: Make bucket granularity adaptable
-
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
- * <p>
+ *
  * <p>By using a configurable lower and upper bound this operator will emit exactly those pairs
  * (T1, T2) where t2.ts ∈ [T1.ts + lowerBound, T1.ts + upperBound]. Both the lower and the
  * upper bound can be configured to be either inclusive or exclusive.
- * <p>
+ *
  * <p>As soon as elements are joined they are passed to a user-defined {@link JoinedProcessFunction},
  * as a {@link Tuple2}, with f0 being the left element and f1 being the right element
  *
- * @param <T1>  The type of the elements in the left stream
- * @param <T2>  The type of the elements in the right stream
+ * @param <T1> The type of the elements in the left stream
+ * @param <T2> The type of the elements in the right stream
  * @param <OUT> The output type created by the user-defined function
  */
 public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
