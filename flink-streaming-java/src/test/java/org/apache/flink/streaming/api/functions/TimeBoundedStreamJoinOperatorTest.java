@@ -23,7 +23,9 @@ import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
@@ -79,7 +81,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = -1;
 		boolean upperBoundInclusive = true;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+		try (TestHarness testHarness =
 			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
@@ -109,7 +111,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 1;
 		boolean upperBoundInclusive = true;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+		try (TestHarness testHarness =
 			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
@@ -146,7 +148,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		boolean lowerBoundInclusive = true;
 		boolean upperBoundInclusive = true;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+		try (TestHarness testHarness =
 			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
@@ -175,7 +177,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = -1;
 		boolean upperBoundInclusive = false;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+		try (TestHarness testHarness =
 			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
@@ -202,7 +204,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 1;
 		boolean upperBoundInclusive = false;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+		try (TestHarness testHarness =
 			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
@@ -231,7 +233,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 3;
 		boolean upperBoundInclusive = false;
 
-		try (KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness =
+		try (TestHarness testHarness =
 			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive)) {
 
 			testHarness.setup();
@@ -273,17 +275,12 @@ public class TimeBoundedStreamJoinOperatorTest {
 			new PassthroughFunction()
 		);
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness =
-			new KeyedTwoInputStreamOperatorTestHarness<>(
+		TestHarness testHarness = new TestHarness(
 				operator,
 				(elem) -> elem.key, // key
 				(elem) -> elem.key, // key
 				TypeInformation.of(String.class)
-			);
+		);
 
 		testHarness.setup();
 		testHarness.open();
@@ -359,12 +356,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			new PassthroughFunction()
 		);
 
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness =
-			new KeyedTwoInputStreamOperatorTestHarness<>(
+		TestHarness testHarness = new TestHarness(
 				operator,
 				(elem) -> elem.key, // key
 				(elem) -> elem.key, // key
@@ -395,12 +387,12 @@ public class TimeBoundedStreamJoinOperatorTest {
 		boolean upperBoundInclusive = true;
 
 		// create first test harness
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> testHarness =
-			createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		TestHarness testHarness = createTestHarness(
+			lowerBound,
+			lowerBoundInclusive,
+			upperBound,
+			upperBoundInclusive
+		);
 
 		testHarness.setup();
 		testHarness.open();
@@ -442,12 +434,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		assertOutput(expectedOutput, testHarness.getOutput());
 
 		// create new test harness from snapshpt
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>
-			> newTestHarness = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+		TestHarness newTestHarness = createTestHarness(lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
 
 		newTestHarness.setup();
 		newTestHarness.initializeState(handles);
@@ -495,7 +482,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				}
 			);
 
-		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness = new KeyedTwoInputStreamOperatorTestHarness<>(
+		TestHarness testHarness = new TestHarness(
 			op,
 			(elem) -> elem.key,
 			(elem) -> elem.key,
@@ -534,7 +521,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				}
 			);
 
-		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness = new KeyedTwoInputStreamOperatorTestHarness<>(
+		TestHarness testHarness = new TestHarness(
 			op,
 			(elem) -> elem.key,
 			(elem) -> elem.key,
@@ -551,11 +538,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 	@Test(expected = RuntimeException.class)
 	public void testFailsWithNoTimestampsLeft() throws Exception {
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> newTestHarness = createTestHarness(0L, true, 0L, true);
+		TestHarness newTestHarness = createTestHarness(0L, true, 0L, true);
 
 		newTestHarness.setup();
 		newTestHarness.open();
@@ -566,11 +549,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 	@Test(expected = RuntimeException.class)
 	public void testFailsWithNoTimestampsRight() throws Exception {
-		KeyedTwoInputStreamOperatorTestHarness<
-			String,
-			TestElem,
-			TestElem,
-			Tuple2<TestElem, TestElem>> newTestHarness = createTestHarness(0L, true, 0L, true);
+		TestHarness newTestHarness = createTestHarness(0L, true, 0L, true);
 
 		newTestHarness.setup();
 		newTestHarness.open();
@@ -629,11 +608,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		}
 	}
 
-	private KeyedTwoInputStreamOperatorTestHarness<
-		String,
-		TestElem,
-		TestElem,
-		Tuple2<TestElem, TestElem>> createTestHarness(long lowerBound,
+	private TestHarness createTestHarness(long lowerBound,
 		boolean lowerBoundInclusive,
 		long upperBound,
 		boolean upperBoundInclusive) throws Exception {
@@ -650,7 +625,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				new PassthroughFunction()
 			);
 
-		return new KeyedTwoInputStreamOperatorTestHarness<>(
+		return new TestHarness(
 			operator,
 			(elem) -> elem.key, // key
 			(elem) -> elem.key, // key
@@ -736,60 +711,45 @@ public class TimeBoundedStreamJoinOperatorTest {
 		return new StreamRecord<>(testElem, ts);
 	}
 
-	private void processElementsAndWatermarks(
-		KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> testHarness) throws Exception {
+	private void processElementsAndWatermarks(TestHarness testHarness) throws Exception {
 		if (lhsFasterThanRhs) {
 			// add to lhs
-			testHarness.processElement1(createStreamRecord(1, "lhs"));
-			testHarness.processWatermark1(new Watermark(1));
-
-			testHarness.processElement1(createStreamRecord(2, "lhs"));
-			testHarness.processWatermark1(new Watermark(2));
-
-			testHarness.processElement1(createStreamRecord(3, "lhs"));
-			testHarness.processWatermark1(new Watermark(3));
-
-			testHarness.processElement1(createStreamRecord(4, "lhs"));
-			testHarness.processWatermark1(new Watermark(4));
+			for (int i = 1; i <= 4; i++) {
+				testHarness.processElement1(createStreamRecord(i, "lhs"));
+				testHarness.processWatermark1(new Watermark(i));
+			}
 
 			// add to rhs
-			testHarness.processElement2(createStreamRecord(1, "rhs"));
-			testHarness.processWatermark2(new Watermark(1));
-
-			testHarness.processElement2(createStreamRecord(2, "rhs"));
-			testHarness.processWatermark2(new Watermark(2));
-
-			testHarness.processElement2(createStreamRecord(3, "rhs"));
-			testHarness.processWatermark2(new Watermark(3));
-
-			testHarness.processElement2(createStreamRecord(4, "rhs"));
-			testHarness.processWatermark2(new Watermark(4));
+			for (int i = 1; i <= 4; i++) {
+				testHarness.processElement2(createStreamRecord(i, "rhs"));
+				testHarness.processWatermark2(new Watermark(i));
+			}
 		} else {
 			// add to rhs
-			testHarness.processElement2(createStreamRecord(1, "rhs"));
-			testHarness.processWatermark2(new Watermark(1));
-
-			testHarness.processElement2(createStreamRecord(2, "rhs"));
-			testHarness.processWatermark2(new Watermark(2));
-
-			testHarness.processElement2(createStreamRecord(3, "rhs"));
-			testHarness.processWatermark2(new Watermark(3));
-
-			testHarness.processElement2(createStreamRecord(4, "rhs"));
-			testHarness.processWatermark2(new Watermark(4));
+			for (int i = 1; i <= 4; i++) {
+				testHarness.processElement2(createStreamRecord(i, "rhs"));
+				testHarness.processWatermark2(new Watermark(i));
+			}
 
 			// add to lhs
-			testHarness.processElement1(createStreamRecord(1, "lhs"));
-			testHarness.processWatermark1(new Watermark(1));
+			for (int i = 1; i <= 4; i++) {
+				testHarness.processElement1(createStreamRecord(i, "lhs"));
+				testHarness.processWatermark1(new Watermark(i));
+			}
+		}
+	}
 
-			testHarness.processElement1(createStreamRecord(2, "lhs"));
-			testHarness.processWatermark1(new Watermark(2));
+	/**
+	 * Custom test harness to avoid endless generics in all of the test code.
+	 */
+	private static class TestHarness extends KeyedTwoInputStreamOperatorTestHarness<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> {
 
-			testHarness.processElement1(createStreamRecord(3, "lhs"));
-			testHarness.processWatermark1(new Watermark(3));
-
-			testHarness.processElement1(createStreamRecord(4, "lhs"));
-			testHarness.processWatermark1(new Watermark(4));
+		TestHarness(
+			TwoInputStreamOperator<TestElem, TestElem, Tuple2<TestElem, TestElem>> operator,
+			KeySelector<TestElem, String> keySelector1,
+			KeySelector<TestElem, String> keySelector2,
+			TypeInformation<String> keyType) throws Exception {
+			super(operator, keySelector1, keySelector2, keyType);
 		}
 	}
 }
