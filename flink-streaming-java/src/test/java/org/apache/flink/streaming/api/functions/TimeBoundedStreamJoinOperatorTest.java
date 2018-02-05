@@ -40,7 +40,6 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
@@ -491,15 +490,38 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.close();
 	}
 
+	@Test(expected = RuntimeException.class)
+	public void testFailsWithNoTimestampsLeft() throws Exception {
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> newTestHarness = createTestHarness(0L, true, 0L, true);
+
+		newTestHarness.setup();
+		newTestHarness.open();
+
+		// note that the StreamRecord has no timestamp in constructor
+		newTestHarness.processElement1(new StreamRecord<>(new TestElem(0, "lhs")));
+	}
+
+	@Test(expected = RuntimeException.class)
+	public void testFailsWithNoTimestampsRight() throws Exception {
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> newTestHarness = createTestHarness(0L, true, 0L, true);
+
+		newTestHarness.setup();
+		newTestHarness.open();
+
+		// note that the StreamRecord has no timestamp in constructor
+		newTestHarness.processElement2(new StreamRecord<>(new TestElem(0, "rhs")));
+	}
+
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
 		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
-
-		if (!stateIsEmpty) {
-			for (Map.Entry<Long, ?> o : state.entries()) {
-				System.out.println(o);
-			}
-		}
-
 		Assert.assertTrue("state not empty", stateIsEmpty);
 	}
 

@@ -197,13 +197,19 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	@Override
 	public void processElement1(StreamRecord<T1> record) throws Exception {
 
-		long leftTs = record.getTimestamp();
 		T1 leftValue = record.getValue();
-
-		addToLeftBuffer(leftValue, leftTs);
+		long leftTs = record.getTimestamp();
 
 		long min = leftTs + lowerBound;
 		long max = leftTs + upperBound;
+
+		if (leftTs == Long.MIN_VALUE) {
+			// TODO: Validation and which Exception?
+			throw new RuntimeException("Time-bounded stream joins need to have timestamps " +
+				"assigned to elements, but current element has timestamp Long.MIN_VALUE");
+		}
+
+		addToLeftBuffer(leftValue, leftTs);
 
 		// TODO: Adapt to different bucket sizes here
 		// Go over all buckets that are within the time bounds
@@ -252,10 +258,16 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		long rightTs = record.getTimestamp();
 		T2 rightElem = record.getValue();
 
-		addToRightBuffer(rightElem, rightTs);
-
 		long min = rightTs + inverseLowerBound;
 		long max = rightTs + inverseUpperBound;
+
+		addToRightBuffer(rightElem, rightTs);
+
+		if (rightTs == Long.MIN_VALUE) {
+			// TODO: Validation and which Exception?
+			throw new RuntimeException("Time-bounded stream joins need to have timestamps " +
+				"assigned to elements, but current element has timestamp Long.MIN_VALUE");
+		}
 
 		// TODO: Adapt to different bucket sizes here
 		// Go over all buckets that are within the time bounds
