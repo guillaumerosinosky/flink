@@ -574,11 +574,11 @@ public class TimeBoundedStreamJoinOperatorTest {
 				@Override
 				public void processElement(TestElem left,
 										   TestElem right, Context ctx, Collector<Object> out) throws Exception {
-					ctx.timerService().registerEventTimeTimer(1);
+					ctx.registerEventTimeTimer(1);
 				}
 
 				@Override
-				public void onTimer(long timestamp, OnTimerContext ctx, Collector<Object> out) {
+				public void onTimer(long timestamp, Context ctx, Collector<Object> out) {
 					Assert.assertEquals(1, timestamp);
 					numCalled.getAndIncrement();
 				}
@@ -616,12 +616,12 @@ public class TimeBoundedStreamJoinOperatorTest {
 				public void processElement(TestElem left,
 										   TestElem right, Context ctx, Collector<Object> out) throws Exception {
 					if (numCalled.get() == 0) {
-						ctx.timerService().registerEventTimeTimer(1);
+						ctx.registerEventTimeTimer(1);
 					}
 				}
 
 				@Override
-				public void onTimer(long timestamp, OnTimerContext ctx, Collector<Object> out) {
+				public void onTimer(long timestamp, Context ctx, Collector<Object> out) {
 					Assert.assertEquals(1, timestamp);
 					numCalled.incrementAndGet();
 				}
@@ -654,8 +654,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		Assert.assertEquals(1, numCalled.get());
 	}
-
-	// TODO: Add test for delayed watermark
 
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
 		boolean stateIsEmpty = Iterables.size(state.keys()) == 0;
