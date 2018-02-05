@@ -19,7 +19,10 @@
 package org.apache.flink.streaming.api.functions;
 
 import org.apache.flink.api.common.functions.AbstractRichFunction;
+import org.apache.flink.streaming.api.TimeDomain;
+import org.apache.flink.streaming.api.TimerService;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
 
 /**
  * A function that processes two joined elements and produces a single output one.
@@ -49,10 +52,14 @@ public abstract class JoinedProcessFunction<IN1, IN2, OUT> extends AbstractRichF
 	 */
 	public abstract void processElement(IN1 left, IN2 right, Context ctx, Collector<OUT> out) throws Exception;
 
+	// TODO: JavaDoc
+	public void onTimer(long timestamp, Context ctx, Collector<OUT> out) throws Exception {
+	}
+
 	/**
 	 * The Context that gets passed to processElement.
 	 */
-	public abstract class Context {
+	public abstract class Context implements TimerService {
 
 		/**
 		 * @return The timestamp of the left element of a joined pair
@@ -68,5 +75,7 @@ public abstract class JoinedProcessFunction<IN1, IN2, OUT> extends AbstractRichF
 		 * @return The timestamp of the joined pair
 		 */
 		public abstract long getTimestamp();
+
+		public abstract <X> void output(OutputTag<X> outputTag, X value);
 	}
 }

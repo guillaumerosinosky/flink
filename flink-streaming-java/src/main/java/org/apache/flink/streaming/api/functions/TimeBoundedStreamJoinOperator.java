@@ -18,7 +18,7 @@
 
 package org.apache.flink.streaming.api.functions;
 
-import org.apache.flink.annotation.Public;
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -28,22 +28,21 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.BooleanSerializer;
 import org.apache.flink.api.common.typeutils.base.ListSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
+import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
-import org.apache.flink.runtime.state.VoidNamespace;
-import org.apache.flink.runtime.state.VoidNamespaceSerializer;
+import org.apache.flink.streaming.api.TimerService;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.InternalTimer;
+import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,9 +63,18 @@ import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
  * @param <T2> The type of the elements in the right stream
  * @param <OUT> The output type created by the user-defined function
  */
+// TODO: Add gist of algorithm in javadoc
+@Internal
 public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	extends AbstractUdfStreamOperator<OUT, JoinedProcessFunction<T1, T2, OUT>>
-	implements TwoInputStreamOperator<T1, T2, OUT>, Triggerable<K, VoidNamespace> {
+	implements TwoInputStreamOperator<T1, T2, OUT>, Triggerable<K, String> {
+
+	private static final String LEFT_BUFFER = "LEFT_BUFFER";
+	private static final String RIGHT_BUFFER = "RIGHT_BUFFER";
+	private static final String LAST_CLEANUP_LEFT = "LAST_CLEANUP_LEFT";
+	private static final String LAST_CLEANUP_RIGHT = "LAST_CLEANUP_RIGHT";
+	private static final String USER_TIMER_NAMESPACE = "USER_TIMER";
+	private static final String CLEANUP_TIMER_NAMESPACE = "CLEANUP_TIMER";
 
 	private final long lowerBound;
 	private final long upperBound;
@@ -77,12 +85,10 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private final boolean lowerBoundInclusive;
 	private final boolean upperBoundInclusive;
 
-	private final long bucketGranularity;
+	private final TypeSerializer<T1> leftTypeSerializer;
+	private final TypeSerializer<T2> rightTypeSerializer;
 
-	private static final String LEFT_BUFFER = "LEFT_BUFFER";
-	private static final String RIGHT_BUFFER = "RIGHT_BUFFER";
-	private static final String LAST_CLEANUP_LEFT = "LAST_CLEANUP_LEFT";
-	private static final String LAST_CLEANUP_RIGHT = "LAST_CLEANUP_RIGHT";
+	private final long bucketGranularity;
 
 	private transient ValueState<Long> lastCleanupRightBuffer;
 	private transient ValueState<Long> lastCleanupLeftBuffer;
@@ -90,14 +96,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
 
-	private transient Logger logger = LoggerFactory.getLogger(TimeBoundedStreamJoinOperator.class);
-
-	private final TypeSerializer<T1> leftTypeSerializer;
-	private final TypeSerializer<T2> rightTypeSerializer;
-
 	private transient TimestampedCollector<OUT> collector;
-
-	private ContextImpl context;
+	private transient ContextImpl context;
 
 	private Watermark lastWatermark;
 
@@ -118,14 +118,13 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		long upperBound,
 		boolean lowerBoundInclusive,
 		boolean upperBoundInclusive,
-		int bucketGranularity,
+		long bucketGranularity,
 		TypeSerializer<T1> leftTypeSerializer,
 		TypeSerializer<T2> rightTypeSerializer,
-		JoinedProcessFunction<T1, T2, OUT> udf
-	) {
+		JoinedProcessFunction<T1, T2, OUT> udf) {
 
 		super(udf);
-
+		Preconditions.checkNotNull(udf);
 		Preconditions.checkArgument(lowerBound <= upperBound, "lowerBound <= upperBound must be fulfilled");
 
 		this.lowerBound = lowerBound;
@@ -133,7 +132,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		this.inverseLowerBound = -1 * upperBound;
 		this.inverseUpperBound = -1 * lowerBound;
-
+//TODO: check not negative bucketGran
 		this.lowerBoundInclusive = lowerBoundInclusive;
 		this.upperBoundInclusive = upperBoundInclusive;
 		this.leftTypeSerializer = Preconditions.checkNotNull(leftTypeSerializer);
@@ -146,7 +145,11 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	public void open() throws Exception {
 		super.open();
 		collector = new TimestampedCollector<>(output);
-		context = new ContextImpl(userFunction);
+
+		InternalTimerService<String> userTimerService =
+			getInternalTimerService(USER_TIMER_NAMESPACE, StringSerializer.INSTANCE, this);
+
+		context = new ContextImpl(userFunction, userTimerService);
 
 		@SuppressWarnings("unchecked")
 		Class<Tuple3<T1, Long, Boolean>> leftTypedTuple =
@@ -216,7 +219,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		long max = calculateBucket(leftTs + upperBound);
 
 		if (leftTs == Long.MIN_VALUE) {
-			// TODO: Validation and which Exception?
 			throw new RuntimeException("Time-bounded stream joins need to have timestamps " +
 				"assigned to elements, but current element has timestamp Long.MIN_VALUE");
 		}
@@ -249,8 +251,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		long triggerTime = this.lastWatermark.getTimestamp() + 1;
 
-		getInternalTimerService("cleanup-timer", VoidNamespaceSerializer.INSTANCE, this)
-			.registerEventTimeTimer(VoidNamespace.INSTANCE, triggerTime);
+		getInternalTimerService(CLEANUP_TIMER_NAMESPACE, StringSerializer.INSTANCE, this)
+			.registerEventTimeTimer(CLEANUP_TIMER_NAMESPACE, triggerTime);
 	}
 
 	/**
@@ -274,7 +276,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		addToRightBuffer(rightElem, rightTs);
 
 		if (rightTs == Long.MIN_VALUE) {
-			// TODO: Validation and which Exception?
 			throw new RuntimeException("Time-bounded stream joins need to have timestamps " +
 				"assigned to elements, but current element has timestamp Long.MIN_VALUE");
 		}
@@ -332,8 +333,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		lastCleanUpRight = calculateBucket(lastCleanUpRight);
 		maxCleanup = calculateBucket(maxCleanup);
 
-		logger.trace("Removing elements from leftBuffer in range [{} to {}[", lastCleanUpRight, maxCleanup);
-
 		// Notice that we are not cleaning up the bucket with value maxCleanup, because it might
 		// contain entries that are still needed for a join operation. Instead we keep some perhaps
 		// un-needed values and do the cleanup of what is now maxCleanup the next time
@@ -361,8 +360,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		// un-needed values and do the cleanup of what is now maxCleanup the next time
 
 		// remove elements from leftBuffer in range [lastCleanUpLeft, maxCleanup)
-		logger.trace("Removing elements from rightBuffer in range [{} to {}[", lastCleanupLeft, maxCleanup);
-
 		for (long i = lastCleanupLeft; i < maxCleanup; i += bucketGranularity) {
 			rightBuffer.remove(i);
 		}
@@ -426,38 +423,75 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	}
 
 	@Override
-	public void onEventTime(InternalTimer<K, VoidNamespace> timer) throws Exception {
+	public void onEventTime(InternalTimer<K, String> timer) throws Exception {
 
-		// remove from both sides all those elements where the timestamp is less than the lower
-		// bound, because they are not considered for joining anymore
-		removeFromLhsUntil(timer.getTimestamp() + inverseLowerBound);
-		removeFromRhsUntil(timer.getTimestamp() + lowerBound);
+		if (timer.getNamespace().equals(USER_TIMER_NAMESPACE)) {
+			// TODO: Watermark delay
+			this.userFunction.onTimer(timer.getTimestamp(), this.context, this.collector);
+		} else if (timer.getNamespace().equals(CLEANUP_TIMER_NAMESPACE)) {
+
+			// remove from both sides all those elements where the timestamp is less than the lower
+			// bound, because they are not considered for joining anymore
+			removeFromLhsUntil(timer.getTimestamp() + inverseLowerBound);
+			removeFromRhsUntil(timer.getTimestamp() + lowerBound);
+		}
 	}
 
 	@Override
-	public void onProcessingTime(InternalTimer<K, VoidNamespace> timer) throws Exception {
+	public void onProcessingTime(InternalTimer<K, String> timer) throws Exception {
 		// do nothing
 	}
 
-	private class ContextImpl extends JoinedProcessFunction<T1, T2, OUT>.Context {
+	private class ContextImpl extends JoinedProcessFunction<T1, T2, OUT>.Context implements TimerService {
 
+		private final InternalTimerService<String> internalTimerService;
 		private long leftTs;
 		private long rightTs;
 
-		private ContextImpl(JoinedProcessFunction<T1, T2, OUT> func) {
+		private ContextImpl(JoinedProcessFunction<T1, T2, OUT> func, InternalTimerService<String> internalTimerService) {
 			func.super();
+			this.internalTimerService = internalTimerService;
 		}
 
+		@Override
 		public long getLeftTimestamp() {
 			return leftTs;
 		}
 
+		@Override
 		public long getRightTimestamp() {
 			return rightTs;
 		}
 
+		@Override
 		public long getTimestamp() {
 			return leftTs;
+		}
+
+		@Override
+		public <X> void output(OutputTag<X> outputTag, X value) {
+			// TODO:
+		}
+
+		@Override
+		public long currentProcessingTime() {
+			return internalTimerService.currentProcessingTime();
+		}
+
+		@Override
+		public long currentWatermark() {
+			return internalTimerService.currentWatermark();
+		}
+
+		@Override
+		public void registerProcessingTimeTimer(long time) {
+			// TODO: Should we support this?
+			internalTimerService.registerProcessingTimeTimer(USER_TIMER_NAMESPACE, time);
+		}
+
+		@Override
+		public void registerEventTimeTimer(long time) {
+			internalTimerService.registerEventTimeTimer(USER_TIMER_NAMESPACE, time + getWatermarkDelay());
 		}
 	}
 
