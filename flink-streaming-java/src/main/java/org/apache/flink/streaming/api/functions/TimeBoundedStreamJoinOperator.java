@@ -40,6 +40,9 @@ import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -73,7 +76,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private final boolean lowerBoundInclusive;
 	private final boolean upperBoundInclusive;
 
-	private final long bucketGranularity = 1;
+	private final long bucketGranularity;
 
 	private static final String LEFT_BUFFER = "LEFT_BUFFER";
 	private static final String RIGHT_BUFFER = "RIGHT_BUFFER";
@@ -85,6 +88,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
+
+	private transient Logger logger = LoggerFactory.getLogger(TimeBoundedStreamJoinOperator.class);
 
 	private final TypeSerializer<T1> leftTypeSerializer;
 	private final TypeSerializer<T2> rightTypeSerializer;
@@ -112,6 +117,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		long upperBound,
 		boolean lowerBoundInclusive,
 		boolean upperBoundInclusive,
+		int bucketGranularity,
 		TypeSerializer<T1> leftTypeSerializer,
 		TypeSerializer<T2> rightTypeSerializer,
 		JoinedProcessFunction<T1, T2, OUT> udf
@@ -129,6 +135,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		this.upperBoundInclusive = upperBoundInclusive;
 		this.leftTypeSerializer = leftTypeSerializer;
 		this.rightTypeSerializer = rightTypeSerializer;
+
+		this.bucketGranularity = bucketGranularity;
 	}
 
 	@Override
@@ -199,8 +207,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		T1 leftValue = record.getValue();
 		long leftTs = record.getTimestamp();
 
-		long min = leftTs + lowerBound;
-		long max = leftTs + upperBound;
+		long min = calculateBucket(leftTs + lowerBound);
+		long max = calculateBucket(leftTs + upperBound);
 
 		if (leftTs == Long.MIN_VALUE) {
 			// TODO: Validation and which Exception?
@@ -210,9 +218,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		addToLeftBuffer(leftValue, leftTs);
 
-		// TODO: Adapt to different bucket sizes here
-		// Go over all buckets that are within the time bounds
-		for (long i = min; i <= max; i++) {
+		for (long i = min; i <= max; i += bucketGranularity) {
 			List<Tuple3<T2, Long, Boolean>> fromBucket = rightBuffer.get(i);
 			if (fromBucket != null) {
 
@@ -257,8 +263,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		long rightTs = record.getTimestamp();
 		T2 rightElem = record.getValue();
 
-		long min = rightTs + inverseLowerBound;
-		long max = rightTs + inverseUpperBound;
+		long min = calculateBucket(rightTs + inverseLowerBound);
+		long max = calculateBucket(rightTs + inverseUpperBound);
 
 		addToRightBuffer(rightElem, rightTs);
 
@@ -268,9 +274,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 				"assigned to elements, but current element has timestamp Long.MIN_VALUE");
 		}
 
-		// TODO: Adapt to different bucket sizes here
-		// Go over all buckets that are within the time bounds
-		for (long i = min; i <= max; i++) {
+		for (long i = min; i <= max; i += bucketGranularity) {
 			List<Tuple3<T1, Long, Boolean>> fromBucket = leftBuffer.get(i);
 			if (fromBucket != null) {
 
@@ -320,8 +324,17 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			lastCleanUpRight = 0L;
 		}
 
-		// remove elements from leftBuffer in range [lastValue, maxCleanup]
-		for (long i = lastCleanUpRight; i <= maxCleanup; i++) {
+		lastCleanUpRight = calculateBucket(lastCleanUpRight);
+		maxCleanup = calculateBucket(maxCleanup);
+
+		logger.trace("Removing elements from leftBuffer in range [{} to {}[", lastCleanUpRight, maxCleanup);
+
+		// Notice that we are not cleaning up the bucket with value maxCleanup, because it might
+		// contain entries that are still needed for a join operation. Instead we keep some perhaps
+		// un-needed values and do the cleanup of what is now maxCleanup the next time
+
+		// remove elements from leftBuffer in range [lastCleanUpRight, maxCleanup)
+		for (long i = lastCleanUpRight; i < maxCleanup; i += bucketGranularity) {
 			leftBuffer.remove(i);
 		}
 
@@ -335,8 +348,17 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			lastCleanupLeft = 0L;
 		}
 
-		// remove elements from rightBuffer in range [lastValue, maxCleanup]
-		for (long i = lastCleanupLeft; i <= maxCleanup; i++) {
+		lastCleanupLeft = calculateBucket(lastCleanupLeft);
+		maxCleanup = calculateBucket(maxCleanup);
+
+		// Notice that we are not cleaning up the bucket with value maxCleanup, because it might
+		// contain entries that are still needed for a join operation. Instead we keep some perhaps
+		// un-needed values and do the cleanup of what is now maxCleanup the next time
+
+		// remove elements from leftBuffer in range [lastCleanUpLeft, maxCleanup)
+		logger.trace("Removing elements from rightBuffer in range [{} to {}[", lastCleanupLeft, maxCleanup);
+
+		for (long i = lastCleanupLeft; i < maxCleanup; i += bucketGranularity) {
 			rightBuffer.remove(i);
 		}
 
@@ -391,7 +413,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	}
 
 	private long calculateBucket(long ts) {
-		return Math.floorDiv(ts, bucketGranularity);
+		return Math.floorDiv(ts, bucketGranularity) * bucketGranularity;
 	}
 
 	public long getWatermarkDelay() {
@@ -436,12 +458,12 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	}
 
 	@VisibleForTesting
-	public MapState<Long, List<Tuple3<T1, Long, Boolean>>> getLeftBuffer() {
+	protected MapState<Long, List<Tuple3<T1, Long, Boolean>>> getLeftBuffer() {
 		return leftBuffer;
 	}
 
 	@VisibleForTesting
-	public MapState<Long, List<Tuple3<T2, Long, Boolean>>> getRightBuffer() {
+	protected MapState<Long, List<Tuple3<T2, Long, Boolean>>> getRightBuffer() {
 		return rightBuffer;
 	}
 }

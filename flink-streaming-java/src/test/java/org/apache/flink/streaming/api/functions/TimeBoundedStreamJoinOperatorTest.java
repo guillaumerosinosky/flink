@@ -39,6 +39,8 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -54,14 +56,18 @@ import java.util.stream.Collectors;
 public class TimeBoundedStreamJoinOperatorTest {
 
 	private final boolean lhsFasterThanRhs;
+	private final int bucketSize;
 
-	@Parameters(name = "lhs faster than rhs stream: {0}")
-	public static Boolean[] data() {
-		return new Boolean[]{true, false};
+	@Parameters(name = "lhs faster than rhs: {0}, bucketSize: {1}")
+	public static Collection<Object[]> data() {
+		return Arrays.asList(new Object[][]{
+			{true, 1}, {true, 5}, {false, 1}, {false, 5}
+		});
 	}
 
-	public TimeBoundedStreamJoinOperatorTest(boolean lhsFasterThanRhs) {
+	public TimeBoundedStreamJoinOperatorTest(boolean lhsFasterThanRhs, int bucketSize) {
 		this.lhsFasterThanRhs = lhsFasterThanRhs;
+		this.bucketSize = bucketSize;
 	}
 
 	@Test // lhs - 2 <= rhs <= rhs + 2
@@ -246,7 +252,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	@Test
-	public void testStateGetsCleanedWhenNotNeeded() throws Exception {
+	public void testStateGetsCleanedWhenNotNeededBucketSize1() throws Exception {
 
 		long lowerBound = 1;
 		boolean lowerBoundInclusive = true;
@@ -254,11 +260,14 @@ public class TimeBoundedStreamJoinOperatorTest {
 		long upperBound = 2;
 		boolean upperBoundInclusive = true;
 
+		int bucketGranularity = 1;
+
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
 			upperBoundInclusive,
+			bucketGranularity,
 			TestElem.serializer(),
 			TestElem.serializer(),
 			new PassthroughFunction()
@@ -312,20 +321,68 @@ public class TimeBoundedStreamJoinOperatorTest {
 		testHarness.processElement2(createStreamRecord(3, "rhs"));
 		testHarness.processWatermark2(new Watermark(3));
 
-		assertContainsOnly(operator.getLeftBuffer(), 2, 3);
+		assertContainsOnly(operator.getLeftBuffer(), 1, 2, 3);
 		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement1(createStreamRecord(4, "lhs"));
 		testHarness.processWatermark1(new Watermark(4));
 
-		assertContainsOnly(operator.getLeftBuffer(), 2, 3, 4);
+		assertContainsOnly(operator.getLeftBuffer(), 1, 2, 3, 4);
 		assertEmpty(operator.getRightBuffer());
 
 		testHarness.processElement2(createStreamRecord(4, "rhs"));
 		testHarness.processWatermark2(new Watermark(4));
 
-		assertContainsOnly(operator.getLeftBuffer(), 3, 4);
+		assertContainsOnly(operator.getLeftBuffer(), 2, 3, 4);
 		assertEmpty(operator.getRightBuffer());
+	}
+
+	@Test
+	public void testStateGetsCleanedWhenNotNeededBucketSize5() throws Exception {
+
+		long lowerBound = 0;
+		boolean lowerBoundInclusive = true;
+
+		long upperBound = 0;
+		boolean upperBoundInclusive = true;
+
+		int bucketGranularity = 5;
+
+		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
+			lowerBound,
+			upperBound,
+			lowerBoundInclusive,
+			upperBoundInclusive,
+			bucketGranularity,
+			TestElem.serializer(),
+			TestElem.serializer(),
+			new PassthroughFunction()
+		);
+
+		KeyedTwoInputStreamOperatorTestHarness<
+			String,
+			TestElem,
+			TestElem,
+			Tuple2<TestElem, TestElem>> testHarness =
+			new KeyedTwoInputStreamOperatorTestHarness<>(
+				operator,
+				(elem) -> elem.key, // key
+				(elem) -> elem.key, // key
+				TypeInformation.of(String.class)
+			);
+
+		testHarness.setup();
+		testHarness.open();
+
+		for (int i = 0; i < 10; i++) {
+			testHarness.processElement1(createStreamRecord(i, "lhs"));
+			testHarness.processWatermark1(new Watermark(i));
+			testHarness.processElement2(createStreamRecord(i, "rhs"));
+			testHarness.processWatermark2(new Watermark(i));
+		}
+
+		assertContainsOnly(operator.getLeftBuffer(), 5);
+		assertContainsOnly(operator.getRightBuffer(), 5);
 	}
 
 	@Test
@@ -423,6 +480,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				1,
 				true,
 				true,
+				bucketSize,
 				TestElem.serializer(),
 				TestElem.serializer(),
 				new JoinedProcessFunction<TestElem, TestElem, Tuple2<TestElem, TestElem>>() {
@@ -461,6 +519,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				1,
 				true,
 				true,
+				bucketSize,
 				TestElem.serializer(),
 				TestElem.serializer(),
 				new JoinedProcessFunction<TestElem, TestElem, Tuple2<TestElem, TestElem>>() {
@@ -585,6 +644,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 				upperBound,
 				lowerBoundInclusive,
 				upperBoundInclusive,
+				bucketSize,
 				TestElem.serializer(),
 				TestElem.serializer(),
 				new PassthroughFunction()
