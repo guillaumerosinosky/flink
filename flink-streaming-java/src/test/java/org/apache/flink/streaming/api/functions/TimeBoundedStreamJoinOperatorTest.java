@@ -675,7 +675,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 		TestElem lhs = new TestElem(lhsTs, "lhs");
 		TestElem rhs = new TestElem(rhsTs, "rhs");
 
-		// TODO: this limits the test to selection of left timestamp
 		return new StreamRecord<>(Tuple2.of(lhs, rhs), lhsTs);
 	}
 

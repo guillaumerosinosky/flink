@@ -48,7 +48,6 @@ import java.util.List;
 
 import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
 
-// TODO: Make bucket granularity adaptable
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
  *
@@ -417,7 +416,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	}
 
 	public long getWatermarkDelay() {
-		// TODO: Adapt this to when we use the rightBuffer or min timestamp
 		return (upperBound < 0) ? 0 : upperBound;
 	}
 
