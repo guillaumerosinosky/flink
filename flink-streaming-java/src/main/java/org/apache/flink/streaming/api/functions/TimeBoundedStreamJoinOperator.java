@@ -426,8 +426,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	public void onEventTime(InternalTimer<K, String> timer) throws Exception {
 
 		if (timer.getNamespace().equals(USER_TIMER_NAMESPACE)) {
-			// TODO: Watermark delay
-			this.userFunction.onTimer(timer.getTimestamp(), this.context, this.collector);
+			this.userFunction.onTimer(timer.getTimestamp() - getWatermarkDelay(), this.context, this.collector);
 		} else if (timer.getNamespace().equals(CLEANUP_TIMER_NAMESPACE)) {
 
 			// remove from both sides all those elements where the timestamp is less than the lower
@@ -470,7 +469,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		@Override
 		public <X> void output(OutputTag<X> outputTag, X value) {
-			// TODO:
+			// TODO: What to do here? Leave this out?
 		}
 
 		@Override
@@ -480,7 +479,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		@Override
 		public long currentWatermark() {
-			return internalTimerService.currentWatermark();
+			return internalTimerService.currentWatermark() - getWatermarkDelay();
 		}
 
 		@Override

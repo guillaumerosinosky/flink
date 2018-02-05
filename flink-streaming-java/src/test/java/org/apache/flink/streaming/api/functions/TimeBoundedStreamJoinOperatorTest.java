@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 // TODO: Parameterize to use different state backends --> This would require circular dependency on flink rocksdb
@@ -498,6 +499,44 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	@Test
+	public void testReturnsCorrectTimestamp() throws Exception {
+		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
+			new TimeBoundedStreamJoinOperator<>(
+				-1,
+				1,
+				true,
+				true,
+				bucketSize,
+				TestElem.serializer(),
+				TestElem.serializer(),
+				new JoinedProcessFunction<TestElem, TestElem, Tuple2<TestElem, TestElem>>() {
+					@Override
+					public void processElement(
+						TestElem left,
+						TestElem right,
+						Context ctx,
+						Collector<Tuple2<TestElem, TestElem>> out) throws Exception {
+						Assert.assertEquals(left.ts, ctx.getTimestamp());
+					}
+				}
+			);
+
+		TestHarness testHarness = new TestHarness(
+			op,
+			(elem) -> elem.key,
+			(elem) -> elem.key,
+			TypeInformation.of(String.class)
+		);
+
+		testHarness.setup();
+		testHarness.open();
+
+		processElementsAndWatermarks(testHarness);
+
+		testHarness.close();
+	}
+
+	@Test
 	public void testContextCorrectRightTimestamp() throws Exception {
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
@@ -653,6 +692,120 @@ public class TimeBoundedStreamJoinOperatorTest {
 		harness.close();
 
 		Assert.assertEquals(1, numCalled.get());
+	}
+
+	@Test
+	public void udfTimerRespectsWatermarkDelay() throws Exception {
+		AtomicInteger numCalled = new AtomicInteger(0);
+		TimeBoundedStreamJoinOperator op = new TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Object>(
+			1,
+			2,
+			true,
+			true,
+			1,
+			TestElem.serializer(),
+			TestElem.serializer(),
+			new JoinedProcessFunction<TestElem, TestElem, Object>() {
+				@Override
+				public void processElement(TestElem left,
+										   TestElem right, Context ctx, Collector<Object> out) throws Exception {
+					if (numCalled.get() == 0) {
+						ctx.registerEventTimeTimer(1);
+					}
+				}
+
+				@Override
+				public void onTimer(long timestamp, Context ctx, Collector<Object> out) {
+					Assert.assertEquals(1, timestamp);
+					numCalled.incrementAndGet();
+				}
+			}
+		);
+
+		TestHarness harness = new TestHarness(op, elem -> "", elem -> "", TypeInformation.of(String.class));
+		harness.open();
+		harness.setup();
+
+		harness.processElement1(createStreamRecord(1L, "lhs"));
+		harness.processWatermark1(new Watermark(1));
+		harness.processElement2(createStreamRecord(1L, "rhs"));
+		harness.processWatermark2(new Watermark(1));
+
+		Assert.assertEquals(0, numCalled.get());
+
+		harness.processElement1(createStreamRecord(2L, "lhs"));
+		harness.processWatermark1(new Watermark(2));
+		harness.processElement2(createStreamRecord(2L, "rhs"));
+		harness.processWatermark2(new Watermark(2));
+
+		Assert.assertEquals(0, numCalled.get());
+
+		harness.processElement1(createStreamRecord(3L, "lhs"));
+		harness.processWatermark1(new Watermark(3));
+		harness.processElement2(createStreamRecord(3L, "rhs"));
+		harness.processWatermark2(new Watermark(3));
+
+		Assert.assertEquals(1, numCalled.get());
+
+		harness.processElement1(createStreamRecord(4L, "lhs"));
+		harness.processWatermark1(new Watermark(4));
+		harness.processElement2(createStreamRecord(4L, "rhs"));
+		harness.processWatermark2(new Watermark(4));
+
+		Assert.assertEquals(1, numCalled.get());
+
+	}
+
+	@Test
+	public void contextRespectsWatermarkDelay() throws Exception {
+		AtomicLong currentWatermark = new AtomicLong(Long.MIN_VALUE);
+
+		TimeBoundedStreamJoinOperator op = new TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Object>(
+			1,
+			2,
+			true,
+			true,
+			1,
+			TestElem.serializer(),
+			TestElem.serializer(),
+			new JoinedProcessFunction<TestElem, TestElem, Object>() {
+				@Override
+				public void processElement(TestElem left,
+										   TestElem right, Context ctx, Collector<Object> out) throws Exception {
+					ctx.registerEventTimeTimer(left.ts);
+				}
+
+				@Override
+				public void onTimer(long timestamp, Context ctx, Collector<Object> out) {
+					currentWatermark.set(ctx.currentWatermark());
+				}
+			}
+		);
+
+		TestHarness harness = new TestHarness(op, elem -> "", elem -> "", TypeInformation.of(String.class));
+		harness.open();
+		harness.setup();
+
+		harness.processElement1(createStreamRecord(1L, "lhs"));
+		harness.processWatermark1(new Watermark(1));
+		harness.processElement2(createStreamRecord(1L, "rhs"));
+		harness.processWatermark2(new Watermark(1));
+
+		Assert.assertEquals(Long.MIN_VALUE, currentWatermark.get());
+
+		harness.processElement1(createStreamRecord(2L, "lhs"));
+		harness.processWatermark1(new Watermark(2));
+		harness.processElement2(createStreamRecord(2L, "rhs"));
+		harness.processWatermark2(new Watermark(2));
+
+		Assert.assertEquals(Long.MIN_VALUE, currentWatermark.get());
+
+		harness.processElement1(createStreamRecord(3L, "lhs"));
+		harness.processWatermark1(new Watermark(3));
+		harness.processElement2(createStreamRecord(3L, "rhs"));
+		harness.processWatermark2(new Watermark(3));
+
+		Assert.assertEquals(1, currentWatermark.get());
 	}
 
 	private void assertEmpty(MapState<Long, ?> state) throws Exception {
