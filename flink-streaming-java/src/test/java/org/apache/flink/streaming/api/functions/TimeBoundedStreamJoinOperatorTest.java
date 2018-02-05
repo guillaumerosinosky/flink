@@ -30,6 +30,7 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.util.KeyedTwoInputStreamOperatorTestHarness;
+import org.apache.flink.streaming.util.TestHarnessUtil;
 import org.apache.flink.util.Collector;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
@@ -98,7 +99,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			);
 
 			assertOutput(expectedOutput, testHarness.getOutput());
-			ensureNoLateData(testHarness.getOutput());
+			TestHarnessUtil.assertNoLateRecords(testHarness.getOutput());
 		}
 	}
 
@@ -135,7 +136,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
 			assertOutput(expectedOutput, testHarness.getOutput());
-			ensureNoLateData(output);
+			TestHarnessUtil.assertNoLateRecords(output);
 
 		}
 	}
@@ -165,7 +166,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			);
 
 			assertOutput(expected, testHarness.getOutput());
-			ensureNoLateData(testHarness.getOutput());
+			TestHarnessUtil.assertNoLateRecords(testHarness.getOutput());
 		}
 	}
 
@@ -192,7 +193,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
 			assertOutput(expectedOutput, testHarness.getOutput());
-			ensureNoLateData(output);
+			TestHarnessUtil.assertNoLateRecords(output);
 		}
 	}
 
@@ -221,7 +222,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
 			assertOutput(expectedOutput, testHarness.getOutput());
-			ensureNoLateData(output);
+			TestHarnessUtil.assertNoLateRecords(output);
 		}
 	}
 
@@ -248,7 +249,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			ConcurrentLinkedQueue<Object> output = testHarness.getOutput();
 
 			assertOutput(expectedOutput, testHarness.getOutput());
-			ensureNoLateData(output);
+			TestHarnessUtil.assertNoLateRecords(output);
 
 		}
 	}
@@ -430,7 +431,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			streamRecordOf(3, 3)
 		);
 
-		ensureNoLateData(testHarness.getOutput());
+		TestHarnessUtil.assertNoLateRecords(testHarness.getOutput());
 		assertOutput(expectedOutput, testHarness.getOutput());
 
 		// create new test harness from snapshpt
@@ -454,7 +455,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 			streamRecordOf(4, 4)
 		);
 
-		ensureNoLateData(newTestHarness.getOutput());
+		TestHarnessUtil.assertNoLateRecords(newTestHarness.getOutput());
 		assertOutput(expectedOutput, newTestHarness.getOutput());
 	}
 
@@ -590,21 +591,6 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		for (StreamRecord<Tuple2<TestElem, TestElem>> record : expectedOutput) {
 			Assert.assertTrue(actualOutput.contains(record));
-		}
-	}
-
-	// TODO: Move this to test harness utils
-	private void ensureNoLateData(Iterable<Object> output) {
-		// check that no watermark is violated
-		long highestWatermark = Long.MIN_VALUE;
-
-		for (Object elem : output) {
-			if (elem instanceof Watermark) {
-				highestWatermark = ((Watermark) elem).asWatermark().getTimestamp();
-			} else if (elem instanceof StreamRecord) {
-				boolean dataIsOnTime = highestWatermark < ((StreamRecord) elem).getTimestamp();
-				Assert.assertTrue("Late data was emitted after join", dataIsOnTime);
-			}
 		}
 	}
 
