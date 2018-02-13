@@ -333,7 +333,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		this.lastWatermark = mark;
 
 		if (timeServiceManager != null) {
-			timeServiceManager.advanceWatermark(mark);
+			timeServiceManager.advanceWatermark(new Watermark(mark.getTimestamp() - getWatermarkDelay()));
 		}
 
 		// emit the watermark with the calculated delay, so we don't produce late data
