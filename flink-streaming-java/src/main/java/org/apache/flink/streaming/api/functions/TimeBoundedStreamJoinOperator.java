@@ -35,6 +35,7 @@ import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.InternalTimer;
+import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
@@ -115,6 +116,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private transient ContextImpl context;
 
 	private transient Watermark lastWatermark;
+	private transient InternalTimerService<String> internalTimerService;
 
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
@@ -163,6 +165,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		super.open();
 		collector = new TimestampedCollector<>(output);
 		context = new ContextImpl(userFunction);
+		internalTimerService =
+			getInternalTimerService(CLEANUP_TIMER_NAMESPACE, StringSerializer.INSTANCE, this);
 	}
 
 	@Override
@@ -272,9 +276,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		}
 
 		long triggerTime = this.lastWatermark.getTimestamp() + 1;
-
-		getInternalTimerService(CLEANUP_TIMER_NAMESPACE, StringSerializer.INSTANCE, this)
-			.registerEventTimeTimer(CLEANUP_TIMER_NAMESPACE, triggerTime);
+		internalTimerService.registerEventTimeTimer(CLEANUP_TIMER_NAMESPACE, triggerTime);
 	}
 
 	/**
