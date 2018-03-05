@@ -105,6 +105,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private final TypeSerializer<T2> rightTypeSerializer;
 
 	private final long bucketGranularity;
+	private final long watermarkDelay;
 
 	private transient ValueState<Long> lastCleanupRightBuffer;
 	private transient ValueState<Long> lastCleanupLeftBuffer;
@@ -158,6 +159,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		this.rightTypeSerializer = Preconditions.checkNotNull(rightTypeSerializer);
 
 		this.bucketGranularity = bucketGranularity;
+		this.watermarkDelay = (upperBound < 0) ? 0 : upperBound;
 	}
 
 	@Override
@@ -325,9 +327,9 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		registerCleanupTimer();
 	}
-
+	
 	private boolean dataIsLate(long rightTs) {
-		return lastWatermark != null && rightTs < lastWatermark.getTimestamp() - getWatermarkDelay();
+		return lastWatermark != null && rightTs < lastWatermark.getTimestamp() - watermarkDelay;
 	}
 
 	@Override
@@ -345,7 +347,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		}
 
 		// emit the watermark with the calculated delay, so we don't produce late data
-		output.emitWatermark(new Watermark(mark.getTimestamp() - getWatermarkDelay()));
+		output.emitWatermark(new Watermark(mark.getTimestamp() - watermarkDelay));
 	}
 
 	private void collect(T1 left, T2 right, long leftTs, long rightTs) throws Exception {
@@ -448,10 +450,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	private long calculateBucket(long ts) {
 		return Math.floorDiv(ts, bucketGranularity) * bucketGranularity;
-	}
-
-	private long getWatermarkDelay() {
-		return (upperBound < 0) ? 0 : upperBound;
 	}
 
 	@Override
