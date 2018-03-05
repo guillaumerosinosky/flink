@@ -466,7 +466,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	@Override
 	public void onProcessingTime(InternalTimer<K, String> timer) throws Exception {
-		// do nothing
+		throw new RuntimeException("Processing time is not supported for time-bounded joins");
 	}
 
 	private class ContextImpl extends TimeBoundedJoinFunction<T1, T2, OUT>.Context {
