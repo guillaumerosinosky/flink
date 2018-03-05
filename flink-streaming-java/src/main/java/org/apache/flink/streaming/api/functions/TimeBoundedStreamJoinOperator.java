@@ -32,6 +32,7 @@ import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
+import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
@@ -113,7 +114,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private transient TimestampedCollector<OUT> collector;
 	private transient ContextImpl context;
 
-	private Watermark lastWatermark;
+	private transient Watermark lastWatermark;
 
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
@@ -137,9 +138,11 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			TypeSerializer<T2> rightTypeSerializer,
 			TimeBoundedJoinFunction<T1, T2, OUT> udf) {
 
-		super(udf);
-		Preconditions.checkNotNull(udf);
-		Preconditions.checkArgument(lowerBound <= upperBound, "lowerBound <= upperBound must be fulfilled");
+		super(Preconditions.checkNotNull(udf));
+
+		Preconditions.checkArgument(lowerBound <= upperBound,
+			"lowerBound <= upperBound must be fulfilled");
+		Preconditions.checkArgument(bucketGranularity > 0, "bucket size must be greater than zero");
 
 		this.lowerBound = lowerBound;
 		this.upperBound = upperBound;
@@ -152,7 +155,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		this.leftTypeSerializer = Preconditions.checkNotNull(leftTypeSerializer);
 		this.rightTypeSerializer = Preconditions.checkNotNull(rightTypeSerializer);
 
-		Preconditions.checkArgument(bucketGranularity > 0, "bucket size must be greater than zero");
 		this.bucketGranularity = bucketGranularity;
 	}
 
@@ -160,8 +162,12 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	public void open() throws Exception {
 		super.open();
 		collector = new TimestampedCollector<>(output);
-
 		context = new ContextImpl(userFunction);
+	}
+
+	@Override
+	public void initializeState(StateInitializationContext context) throws Exception {
+		super.initializeState(context);
 
 		@SuppressWarnings("unchecked")
 		Class<Tuple3<T1, Long, Boolean>> leftTypedTuple =
