@@ -22,8 +22,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.BooleanSerializer;
 import org.apache.flink.api.common.typeutils.base.ListSerializer;
@@ -45,9 +43,9 @@ import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-
-import static org.apache.flink.api.common.typeinfo.BasicTypeInfo.LONG_TYPE_INFO;
+import java.util.Map;
 
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
@@ -88,8 +86,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	private static final String LEFT_BUFFER = "LEFT_BUFFER";
 	private static final String RIGHT_BUFFER = "RIGHT_BUFFER";
-	private static final String LAST_CLEANUP_LEFT = "LAST_CLEANUP_LEFT";
-	private static final String LAST_CLEANUP_RIGHT = "LAST_CLEANUP_RIGHT";
 	private static final String CLEANUP_TIMER_NAMESPACE = "CLEANUP_TIMER";
 
 	private final long lowerBound;
@@ -106,9 +102,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	private final long bucketGranularity;
 	private final long watermarkDelay;
-
-	private transient ValueState<Long> lastCleanupRightBuffer;
-	private transient ValueState<Long> lastCleanupLeftBuffer;
 
 	private transient MapState<Long, List<Tuple3<T1, Long, Boolean>>> leftBuffer;
 	private transient MapState<Long, List<Tuple3<T2, Long, Boolean>>> rightBuffer;
@@ -212,16 +205,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			LongSerializer.INSTANCE,
 			new ListSerializer<>(rightTupleSerializer)
 		));
-
-		this.lastCleanupRightBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
-			LAST_CLEANUP_RIGHT,
-			LONG_TYPE_INFO
-		));
-
-		this.lastCleanupLeftBuffer = getRuntimeContext().getState(new ValueStateDescriptor<>(
-			LAST_CLEANUP_LEFT,
-			LONG_TYPE_INFO
-		));
 	}
 
 	/**
@@ -253,17 +236,22 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 		addToLeftBuffer(leftValue, leftTs);
 
-		for (long i = min; i <= max; i += bucketGranularity) {
-			List<Tuple3<T2, Long, Boolean>> fromBucket = rightBuffer.get(i);
-			if (fromBucket != null) {
+		for (Map.Entry<Long, List<Tuple3<T2, Long, Boolean>>> entry : rightBuffer.entries()) {
+			long bucketTimestamp = entry.getKey();
 
-				// check for each element in current bucket if it should be joined
-				for (Tuple3<T2, Long, Boolean> tuple : fromBucket) {
-					if (shouldBeJoined(leftTs, tuple.f1)) {
+			if (!(min <= bucketTimestamp && bucketTimestamp <= max)) {
+				// skip buckets that are out of bounds
+				continue;
+			}
 
-						// collect joined tuple with left timestamp
-						collect(leftValue, tuple.f0, leftTs, tuple.f1);
-					}
+			List<Tuple3<T2, Long, Boolean>> fromBucket = entry.getValue();
+
+			// check for each element in current bucket if it should be joined
+			for (Tuple3<T2, Long, Boolean> tuple : fromBucket) {
+				if (shouldBeJoined(leftTs, tuple.f1)) {
+
+					// collect joined tuple with left timestamp
+					collect(leftValue, tuple.f0, leftTs, tuple.f1);
 				}
 			}
 		}
@@ -310,24 +298,26 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			return;
 		}
 
-		for (long i = min; i <= max; i += bucketGranularity) {
-			List<Tuple3<T1, Long, Boolean>> fromBucket = leftBuffer.get(i);
-			if (fromBucket != null) {
+		for (Map.Entry<Long, List<Tuple3<T1, Long, Boolean>>> entry : leftBuffer.entries()) {
+			long buffer = entry.getKey();
 
-				// check for each element in current bucket if it should be joined
-				for (Tuple3<T1, Long, Boolean> tuple : fromBucket) {
-					if (shouldBeJoined(tuple.f1, rightTs)) {
+			if (!(min <= buffer && buffer <= max)) {
+				// skip buckets that are out of bounds
+				continue;
+			}
 
-						// collect joined tuple with left timestamp
-						collect(tuple.f0, rightElem, tuple.f1, rightTs);
-					}
+			for (Tuple3<T1, Long, Boolean> tuple : entry.getValue()) {
+				if (shouldBeJoined(tuple.f1, rightTs)) {
+
+					// collect joined tuple with left timestamp
+					collect(tuple.f0, rightElem, tuple.f1, rightTs);
 				}
 			}
 		}
 
 		registerCleanupTimer();
 	}
-	
+
 	private boolean dataIsLate(long rightTs) {
 		return lastWatermark != null && rightTs < lastWatermark.getTimestamp() - watermarkDelay;
 	}
@@ -359,12 +349,6 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	private void removeFromLhsUntil(long maxCleanup) throws Exception {
 
-		Long lastCleanUpRight = lastCleanupRightBuffer.value();
-		if (lastCleanUpRight == null) {
-			lastCleanUpRight = 0L;
-		}
-
-		lastCleanUpRight = calculateBucket(lastCleanUpRight);
 		maxCleanup = calculateBucket(maxCleanup);
 
 		// Notice that we are not cleaning up the bucket with value maxCleanup, because it might
@@ -372,21 +356,17 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		// un-needed values and do the cleanup of what is now maxCleanup the next time
 
 		// remove elements from leftBuffer in range [lastCleanUpRight, maxCleanup)
-		for (long i = lastCleanUpRight; i < maxCleanup; i += bucketGranularity) {
-			leftBuffer.remove(i);
+		Iterator<Map.Entry<Long, List<Tuple3<T1, Long, Boolean>>>> iterator = leftBuffer.iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<Long, List<Tuple3<T1, Long, Boolean>>> next = iterator.next();
+			if (next.getKey() < maxCleanup) {
+				iterator.remove();
+			}
 		}
-
-		lastCleanupRightBuffer.update(maxCleanup);
 	}
 
 	private void removeFromRhsUntil(long maxCleanup) throws Exception {
 
-		Long lastCleanupLeft = lastCleanupLeftBuffer.value();
-		if (lastCleanupLeft == null) {
-			lastCleanupLeft = 0L;
-		}
-
-		lastCleanupLeft = calculateBucket(lastCleanupLeft);
 		maxCleanup = calculateBucket(maxCleanup);
 
 		// Notice that we are not cleaning up the bucket with value maxCleanup, because it might
@@ -394,11 +374,13 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		// un-needed values and do the cleanup of what is now maxCleanup the next time
 
 		// remove elements from leftBuffer in range [lastCleanUpLeft, maxCleanup)
-		for (long i = lastCleanupLeft; i < maxCleanup; i += bucketGranularity) {
-			rightBuffer.remove(i);
+		Iterator<Map.Entry<Long, List<Tuple3<T2, Long, Boolean>>>> iterator = rightBuffer.iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<Long, List<Tuple3<T2, Long, Boolean>>> next = iterator.next();
+			if (next.getKey() < maxCleanup) {
+				iterator.remove();
+			}
 		}
-
-		lastCleanupLeftBuffer.update(maxCleanup);
 	}
 
 	private boolean shouldBeJoined(long leftTs, long rightTs) {
@@ -449,7 +431,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	}
 
 	private long calculateBucket(long ts) {
-		return Math.floorDiv(ts, bucketGranularity) * bucketGranularity;
+		return (ts / bucketGranularity) * bucketGranularity;
 	}
 
 	@Override
