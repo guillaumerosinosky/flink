@@ -113,6 +113,9 @@ function create_ha_config() {
     #==============================================================================
 
     rest.port: 8081
+
+    query.server.ports: 9000-9009
+    query.proxy.ports: 9010-9019
 EOL
 }
 
@@ -137,7 +140,7 @@ function start_local_zk {
             address=${BASH_REMATCH[2]}
 
             if [ "${address}" != "localhost" ]; then
-                echo "[ERROR] Parse error. Only available for localhost."
+                echo "[ERROR] Parse error. Only available for localhost. Expected address 'localhost' but got '${address}'"
                 exit 1
             fi
             ${FLINK_DIR}/bin/zookeeper.sh start $id
@@ -165,6 +168,26 @@ function start_cluster {
     echo "Waiting for dispatcher REST endpoint to come up..."
     sleep 1
   done
+}
+
+function start_and_wait_for_tm {
+
+    ${FLINK_DIR}/bin/taskmanager.sh start
+
+    for i in {1..10}; do
+        # without the || true this would exit our script if the JobManager is not yet up
+        QUERY_RESULT=$(curl "http://localhost:8081/taskmanagers" 2> /dev/null || true)
+
+      if [[ "$QUERY_RESULT" == "" ]]; then
+        echo "TaskManager is not yet up"
+      elif [[ "$QUERY_RESULT" != "{\"taskmanagers\":[]}" ]]; then
+        echo "TaskManager is up."
+        break
+      fi
+
+      echo "Waiting for dispatcher REST endpoint to come up..."
+      sleep 1
+    done
 }
 
 function check_logs_for_errors {
@@ -456,4 +479,32 @@ function start_timer {
 function end_timer {
     duration=$SECONDS
     echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds"
+}
+
+function clean_stdout_files {
+    rm ${FLINK_DIR}/log/*.out
+}
+
+function clean_log_files {
+    rm ${FLINK_DIR}/log/*
+}
+
+# Expect a string to appear in the log files of the task manager before a given timeout
+# $1: expected string
+# $2: timeout in seconds
+function expect_in_taskmanager_logs {
+    local expected="$1"
+    local timeout=$2
+    local i=0
+    local logfile="${FLINK_DIR}/log/flink*taskexecutor*log"
+
+
+    while ! grep "${expected}" ${logfile} > /dev/null; do
+        sleep 1s
+        ((i++))
+        if ((i > timeout)); then
+            echo "A timeout occurred waiting for '${expected}' to appear in the taskmanager logs"
+            exit 1
+        fi
+    done
 }
