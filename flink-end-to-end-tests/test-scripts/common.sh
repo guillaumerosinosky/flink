@@ -26,8 +26,6 @@ fi
 
 export PASS=1
 
-echo "Flink dist directory: $FLINK_DIR"
-
 TEST_ROOT=`pwd`
 TEST_INFRA_DIR="$0"
 TEST_INFRA_DIR=`dirname "$TEST_INFRA_DIR"`
@@ -37,7 +35,14 @@ cd $TEST_ROOT
 
 # used to randomize created directories
 export TEST_DATA_DIR=$TEST_INFRA_DIR/temp-test-directory-$(date +%S%N)
+
+echo ""
+echo "Setup directories as: "
+echo "FLINK_DIR: $FLINK_DIR"
+echo "TEST_ROOT: $TEST_ROOT"
+echo "TEST_INFRA_DIR: $TEST_INFRA_DIR"
 echo "TEST_DATA_DIR: $TEST_DATA_DIR"
+echo ""
 
 function revert_default_config() {
 
@@ -315,4 +320,41 @@ function cleanup {
   rm -f $FLINK_DIR/log/*
   revert_default_config
 }
+
+function fail_on_non_zero_exit_code {
+    EXIT_CODE=$1
+    ERROR_MESSAGE=$2
+    if [ ${EXIT_CODE} != 0 ]; then
+        echo
+        echo "=============================================================================="
+        echo "${ERROR_MESSAGE}"
+        echo "=============================================================================="
+        exit ${EXIT_CODE}
+    fi
+}
+
+function fail {
+    fail_on_non_zero_exit_code 1 "$1"
+}
+
+# Expect a string to appear in the log files of the task manager before a given timeout
+# $1: expected string
+# $2: timeout in seconds
+function expect_in_taskmanager_logs {
+    local expected="$1"
+    local timeout=$2
+    local i=0
+    local logfile="${FLINK_DIR}/log/flink*taskexecutor*log"
+
+
+    while ! grep "${expected}" ${logfile} > /dev/null; do
+        sleep 1s
+        ((i++))
+        if ((i > timeout)); then
+            echo "A timeout occurred waiting for '${expected}' to appear in the taskmanager logs"
+            exit 1
+        fi
+    done
+}
+
 trap cleanup EXIT
