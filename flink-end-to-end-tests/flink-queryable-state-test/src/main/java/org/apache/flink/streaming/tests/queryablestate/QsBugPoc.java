@@ -23,9 +23,12 @@ import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
 import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.runtime.state.filesystem.FsStateBackend;
+import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.util.Collector;
@@ -47,7 +50,25 @@ public class QsBugPoc {
 	public static void main(final String[] args) throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-		StateBackend stateBackend = new RocksDBStateBackend("file:///tmp/deleteme-rocksdb");
+		ParameterTool tool = ParameterTool.fromArgs(args);
+		String tmpPath = tool.getRequired("tmp-dir");
+		String stateBackendType = tool.getRequired("state-backend");
+
+		StateBackend stateBackend;
+		switch (stateBackendType) {
+			case "rocksdb":
+				stateBackend = new RocksDBStateBackend(tmpPath);
+				break;
+			case "fs":
+				stateBackend = new FsStateBackend(tmpPath);
+				break;
+			case "memory":
+				stateBackend = new MemoryStateBackend();
+				break;
+			default:
+				throw new RuntimeException("Unsupported state backend " + stateBackendType);
+		}
+
 		env.setStateBackend(stateBackend);
 		env.enableCheckpointing(10000);
 		env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);

@@ -49,9 +49,14 @@ EXIT_CODE=0
 
 if [ $EXIT_CODE == 0 ]; then
     printf "\n==============================================================================\n"
-    printf "Running queryable state nightly end to end test\n"
+    printf "Running queryable state (rocksdb) nightly end to end test\n"
     printf "==============================================================================\n"
-    $END_TO_END_DIR/test-scripts/test_queryable_state.sh
+
+    # this test supports parameters for different state backends, but it currently only passes with
+    # rocksdb, not fs or memory. This is because the client iterates over all map state entries
+    # whilst the streaming app is updating it concurrently. This is a design choice, see the
+    # second warning block in the queryable state docs (dev/stream/state/queryable_state.html)
+    $END_TO_END_DIR/test-scripts/test_queryable_state.sh "rocksdb" # other: "memory", "fs", will fail
     EXIT_CODE=$?
 fi
 

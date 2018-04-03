@@ -34,7 +34,7 @@ PORT="9069"                                                                     
 QUERY_NAME="current-value-query"                                                                    # name of the query
 
 # start app with queryable state and wait for it to be available
-JOB_ID=$(${FLINK_DIR}/bin/flink run -p 1 -d ${TEST_PROGRAM_JAR} | awk '{print $NF}' | tail -n 1)
+JOB_ID=$(${FLINK_DIR}/bin/flink run -p 1 -d ${TEST_PROGRAM_JAR} --state-backend $1 --tmp-dir file://${TEST_DATA_DIR} | awk '{print $NF}' | tail -n 1)
 
 expect_in_taskmanager_logs "Flat Map.*switched from DEPLOYING to RUNNING" 10
 
