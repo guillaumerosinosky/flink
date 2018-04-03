@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Javadoc.
+ * POJO representing some information about an email.
  */
 public class EmailInformation implements Serializable {
 
@@ -34,12 +34,6 @@ public class EmailInformation implements Serializable {
 	}
 
 	private EmailId emailId;
-
-//	public void setTimestamp(Instant timestamp) {
-//		this.timestamp = timestamp;
-//	}
-
-	//private Instant timestamp;
 
 	public void setStuff(List<String> stuff) {
 		this.stuff = stuff;
@@ -61,7 +55,6 @@ public class EmailInformation implements Serializable {
 
 	public EmailInformation(Email email) {
 		emailId = email.getEmailId();
-	//	timestamp = email.getTimestamp();
 		stuff = new ArrayList<>();
 		stuff.add("1");
 		stuff.add("2");
@@ -72,10 +65,6 @@ public class EmailInformation implements Serializable {
 	public EmailId getEmailId() {
 		return emailId;
 	}
-
-//	//public Instant getTimestamp() {
-//		return timestamp;
-//	}
 
 	public List<String> getStuff() {
 		return stuff;
@@ -103,7 +92,6 @@ public class EmailInformation implements Serializable {
 		}
 		EmailInformation that = (EmailInformation) o;
 		return Objects.equals(emailId, that.emailId) &&
-//				Objects.equals(timestamp, that.timestamp) &&
 				Objects.equals(stuff, that.stuff) &&
 				Objects.equals(asdf, that.asdf) &&
 				Objects.equals(label, that.label);
@@ -118,7 +106,6 @@ public class EmailInformation implements Serializable {
 	public String toString() {
 		return "EmailInformation{" +
 				"emailId=" + emailId +
-				//", timestamp=" + timestamp +
 				", stuff=" + stuff +
 				", asdf=" + asdf +
 				", label=" + label +

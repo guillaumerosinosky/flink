@@ -18,7 +18,7 @@
 package org.apache.flink.streaming.tests.queryablestate;
 
 /**
- * Javadoc.
+ * POJO for a label surrogate.
  */
 public class LabelSurrogate {
 
@@ -55,7 +55,7 @@ public class LabelSurrogate {
 	}
 
 	/**
-	 * Javadoc.
+	 * An exemplary enum.
 	 */
 	public enum Type {
 		FOO,

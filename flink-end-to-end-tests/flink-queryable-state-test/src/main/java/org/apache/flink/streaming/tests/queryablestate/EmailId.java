@@ -21,7 +21,7 @@ import java.io.Serializable;
 import java.util.Objects;
 
 /**
- * Javadoc.
+ * POJO representing an EmailId.
  */
 public class EmailId implements Serializable {
 

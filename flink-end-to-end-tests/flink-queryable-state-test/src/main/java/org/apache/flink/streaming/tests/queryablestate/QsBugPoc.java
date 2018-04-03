@@ -25,6 +25,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
+import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.util.Collector;
@@ -34,7 +35,9 @@ import java.time.Instant;
 import java.util.Random;
 
 /**
- * Javadoc.
+ * Streaming application that creates an {@link Email} pojo with random ids and increasing
+ * timestamps and passes it to a stateful {@link org.apache.flink.api.common.functions.FlatMapFunction},
+ * where it is exposed as queryable state.
  */
 public class QsBugPoc {
 
@@ -44,8 +47,8 @@ public class QsBugPoc {
 	public static void main(final String[] args) throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-		RocksDBStateBackend rocksDb = new RocksDBStateBackend("file:///tmp/deleteme-rocksdb");
-		env.setStateBackend(rocksDb);
+		StateBackend stateBackend = new RocksDBStateBackend("file:///tmp/deleteme-rocksdb");
+		env.setStateBackend(stateBackend);
 		env.enableCheckpointing(10000);
 		env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
 		env.getCheckpointConfig().setMinPauseBetweenCheckpoints(10000);
