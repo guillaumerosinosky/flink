@@ -39,14 +39,6 @@ EXIT_CODE=0
 
 if [ $EXIT_CODE == 0 ]; then
     printf "\n==============================================================================\n"
-    printf "Running queryable state end to end test\n"
-    printf "==============================================================================\n"
-    $END_TO_END_DIR/test-scripts/test_queryable_state.sh
-    EXIT_CODE=$?
-fi
-
-if [ $EXIT_CODE == 0 ]; then
-    printf "\n==============================================================================\n"
     printf "Running Wordcount end-to-end test\n"
     printf "==============================================================================\n"
     $END_TO_END_DIR/test-scripts/test_batch_wordcount.sh
