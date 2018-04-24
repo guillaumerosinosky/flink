@@ -59,4 +59,4 @@ function test_cleanup {
 }
 
 trap test_cleanup EXIT
-run_test
+run_test $1
