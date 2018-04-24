@@ -18,6 +18,7 @@
 ################################################################################
 
 source "$(dirname "$0")"/common.sh
+source "$(dirname "$0")"/queryable_state_base.sh
 
 QUERYABLE_STATE_SERVER_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailApp.jar
 QUERYABLE_STATE_CLIENT_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailClient.jar
@@ -50,7 +51,7 @@ function run_test() {
     local PARALLELISM=1 # parallelism of queryable state app
     local PORT="9069" # port of queryable state server
 
-    clean_out_files # to ensure there are no files accidentally left behind by previous tests
+    clean_stdout_files # to ensure there are no files accidentally left behind by previous tests
     link_queryable_state_lib
     start_ha_cluster
 
@@ -85,9 +86,7 @@ function run_test() {
 
     sleep 65 # this is a little longer than the heartbeat timeout so that the TM is gone
 
-    ${FLINK_DIR}/bin/taskmanager.sh start
-
-    wait_for_tm
+    start_and_wait_for_tm
 
     sleep 20 # sleep a little to have state restored
 
@@ -108,7 +107,7 @@ function run_test() {
 }
 
 function test_cleanup {
-    clean_out_files
+    clean_stdout_files
     unlink_queryable_state_lib
     stop_cluster
     cleanup

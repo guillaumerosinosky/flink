@@ -18,6 +18,7 @@
 ################################################################################
 
 source "$(dirname "$0")"/common.sh
+source "$(dirname "$0")"/queryable_state_base.sh
 
 function run_test {
     link_queryable_state_lib
@@ -54,7 +55,7 @@ function run_test {
 
 function test_cleanup {
     unlink_queryable_state_lib
-    clean_out_files
+    clean_stdout_files
     cleanup # delegate to common cleanup method
 }
 

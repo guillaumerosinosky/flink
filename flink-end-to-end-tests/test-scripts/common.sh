@@ -160,7 +160,10 @@ function start_cluster {
   done
 }
 
-function wait_for_tm {
+function start_and_wait_for_tm {
+
+    ${FLINK_DIR}/bin/taskmanager.sh start
+
     for i in {1..10}; do
         # without the || true this would exit our script if the JobManager is not yet up
         QUERY_RESULT=$(curl "http://localhost:8081/taskmanagers" 2> /dev/null || true)
@@ -254,25 +257,6 @@ function wait_job_running {
     fi
     sleep 1
   done
-}
-
-
-function link_queryable_state_lib {
-    echo "Moving flink-queryable-state-runtime from opt/ to lib/"
-    mv ${FLINK_DIR}/opt/flink-queryable-state-runtime* ${FLINK_DIR}/lib/
-    if [ $? != 0 ]; then
-        echo "Failed to move flink-queryable-state-runtime from opt/ to lib/. Exiting"
-        exit 1
-    fi
-}
-
-function unlink_queryable_state_lib {
-    echo "Moving flink-queryable-state-runtime from lib/ to opt/"
-    mv ${FLINK_DIR}/lib/flink-queryable-state-runtime* ${FLINK_DIR}/opt/
-    if [ $? != 0 ]; then
-        echo "Failed to move flink-queryable-state-runtime from lib/ to opt/. Exiting"
-        exit 1
-    fi
 }
 
 function take_savepoint {
@@ -370,7 +354,7 @@ function cleanup {
   revert_default_config
 }
 
-function clean_out_files {
+function clean_stdout_files {
     rm ${FLINK_DIR}/log/*.out
 }
 
@@ -388,24 +372,6 @@ function fail_on_non_zero_exit_code {
 
 function fail {
     fail_on_non_zero_exit_code 1 "$1"
-}
-
-# Returns the ip address of the queryable state server
-function get_queryable_state_server_ip {
-    local ip=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log \
-        | grep "Started Queryable State Server" \
-        | awk '{split($11, a, "/"); split(a[2], b, ":"); print b[1]}')
-
-    printf "${ip} \n"
-}
-
-# Returns the ip address of the queryable state server
-function get_queryable_state_proxy_port {
-    local port=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log \
-        | grep "Started Queryable State Proxy Server" \
-        | awk '{split($12, a, "/"); split(a[2], b, ":"); split(b[2], c, "."); print c[1]}')
-
-    printf "${port} \n"
 }
 
 # Expect a string to appear in the log files of the task manager before a given timeout
