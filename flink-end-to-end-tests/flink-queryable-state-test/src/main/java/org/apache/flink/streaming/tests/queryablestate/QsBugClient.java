@@ -26,13 +26,9 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
-import org.apache.flink.queryablestate.exceptions.UnknownKeyOrNamespaceException;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.Map;
+import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -53,9 +49,10 @@ public class QsBugClient {
 		ParameterTool parameters = ParameterTool.fromArgs(args);
 
 		// setup values
-		String jobHexString = parameters.getRequired("job-id");
+		String jobId = parameters.getRequired("job-id");
 		String host = parameters.get("host", "localhost");
 		int port = parameters.getInt("port", 9069);
+		int numIterations = parameters.getInt("iterations", 1500);
 
 		QueryableStateClient client = new QueryableStateClient(host, port);
 
@@ -69,46 +66,53 @@ public class QsBugClient {
 
 		client.setExecutionConfig(new ExecutionConfig());
 
-		String yesterdayAsADateString = DateTimeFormatter
-			.ofPattern("yyyy-MM-dd")
-			.withZone(ZoneId.of("UTC"))
-			.format(Instant.now().minus(Duration.ofDays(1)));
-
-		int iterations = 0;
-		while (iterations < 1500) { // ~2.5 minutes
-			iterations++;
-
-			CompletableFuture<MapState<EmailId, EmailInformation>> resultFuture =
-				client.getKvState(
-					JobID.fromHexString(jobHexString),
-					QUERY_NAME,
-					yesterdayAsADateString,
-					BasicTypeInfo.STRING_TYPE_INFO,
-					stateDescriptor);
-
-			final MapState<EmailId, EmailInformation> mapState;
+		// wait for state to exist
+		for (int i = 0; i < 60; i++) { // ~30s
 			try {
-				mapState = resultFuture.get();
+				getMapState(jobId, client, stateDescriptor);
+				break;
 			} catch (ExecutionException e) {
-				if (e.getCause() instanceof UnknownKeyOrNamespaceException) {
-					System.err.println("State doesn't exist yet; sleeping 500ms");
-					Thread.sleep(500);
-					continue;
-				}
-
-				throw (e);
+				System.err.println("State does not exist yet; sleeping 500ms");
+				Thread.sleep(500);
 			}
 
-			int i = 0;
-			for (Map.Entry<EmailId, EmailInformation> entry : mapState.entries()) {
-				i++;
-				final EmailId emailId = entry.getKey();
-				final EmailInformation emailInformation = entry.getValue();
+			if (i == 59) {
+				throw new RuntimeException("Timeout: state doesn't exist after 30s");
 			}
+		}
 
-			System.out.println("Found " + i + " records.");
+		// query state
+		for (int iterations = 0; iterations < numIterations; iterations++) {
+
+			MapState<EmailId, EmailInformation> mapState =
+				getMapState(jobId, client, stateDescriptor);
+
+			int size = Iterables.size(mapState.values());
+			System.out.println("MapState has " + size + " entries");
+			if (size > 0) {
+				EmailId key = mapState.keys().iterator().next();
+				EmailInformation value = mapState.get(key);
+				System.out.println("First entry: " + key + " --> " + value);
+			}
 
 			Thread.sleep(100);
 		}
+	}
+
+	private static MapState<EmailId, EmailInformation> getMapState(
+		String jobId,
+		QueryableStateClient client,
+		MapStateDescriptor<EmailId, EmailInformation> stateDescriptor) throws InterruptedException, ExecutionException {
+
+		CompletableFuture<MapState<EmailId, EmailInformation>> resultFuture =
+			client.getKvState(
+				JobID.fromHexString(jobId),
+				QUERY_NAME,
+				"", // which key of the keyed state to access
+				BasicTypeInfo.STRING_TYPE_INFO,
+				stateDescriptor);
+
+		final MapState<EmailId, EmailInformation> mapState;
+		return resultFuture.get();
 	}
 }

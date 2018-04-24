@@ -26,12 +26,17 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
+import org.apache.flink.runtime.state.FunctionInitializationContext;
+import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
+import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.util.Collector;
+
+import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -70,9 +75,9 @@ public class QsBugPoc {
 		}
 
 		env.setStateBackend(stateBackend);
-		env.enableCheckpointing(10000);
+		env.enableCheckpointing(1000);
 		env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
-		env.getCheckpointConfig().setMinPauseBetweenCheckpoints(10000);
+		env.getCheckpointConfig().setMinPauseBetweenCheckpoints(0);
 
 		env.addSource(new EmailSource())
 			.keyBy(new KeySelector<Email, String>() {
@@ -81,7 +86,7 @@ public class QsBugPoc {
 
 				@Override
 				public String getKey(Email value) throws Exception {
-					return value.getDate();
+					return "";
 				}
 			})
 			.flatMap(new MyFlatMap());
@@ -131,12 +136,17 @@ public class QsBugPoc {
 		}
 	}
 
-	private static class MyFlatMap extends RichFlatMapFunction<Email, Object> {
+	private static class MyFlatMap extends RichFlatMapFunction<Email, Object> implements
+		CheckpointedFunction {
+
 		private transient MapState<EmailId, EmailInformation> state;
+		private transient int count = -1;
 
 		@Override
 		public void flatMap(Email value, Collector<Object> out) throws Exception {
 			state.put(value.getEmailId(), new EmailInformation(value));
+			count = Iterables.size(state.keys());
+			System.out.println("Count on flatmap: " + count);
 		}
 
 		@Override
@@ -152,6 +162,19 @@ public class QsBugPoc {
 			stateDescriptor.setQueryable(QUERYABLE_STATE_NAME);
 
 			state = getRuntimeContext().getMapState(stateDescriptor);
+		}
+
+		@Override
+		public void snapshotState(FunctionSnapshotContext context) throws Exception {
+			if (count == -1) {
+				System.out.println("Not yet started processing again");
+			}
+			System.out.println("Count on snapshot: " + count);
+		}
+
+		@Override
+		public void initializeState(FunctionInitializationContext context) throws Exception {
+
 		}
 	}
 }
