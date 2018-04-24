@@ -49,6 +49,15 @@ EXIT_CODE=0
 
 if [ $EXIT_CODE == 0 ]; then
     printf "\n==============================================================================\n"
+    printf "Running queryable state with TM restart (rocksdb) nightly end to end test\n"
+    printf "==============================================================================\n"
+
+    $END_TO_END_DIR/test-scripts/test_queryable_state_restart_tm.sh
+    EXIT_CODE=$?
+fi
+
+if [ $EXIT_CODE == 0 ]; then
+    printf "\n==============================================================================\n"
     printf "Running queryable state (rocksdb) nightly end to end test\n"
     printf "==============================================================================\n"
 
