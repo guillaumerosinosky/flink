@@ -102,6 +102,9 @@ function create_ha_config() {
     #==============================================================================
 
     web.port: 8081
+
+    query.server.ports: 9000-9009
+    query.proxy.ports: 9010-9019
 EOL
 }
 
@@ -126,7 +129,7 @@ function start_local_zk {
             address=${BASH_REMATCH[2]}
 
             if [ "${address}" != "localhost" ]; then
-                echo "[ERROR] Parse error. Only available for localhost."
+                echo "[ERROR] Parse error. Only available for localhost. Expected address 'localhost' but got '${address}'"
                 PASS=""
                 exit 1
             fi
@@ -229,6 +232,16 @@ function stop_cluster {
   fi
 }
 
+###################################
+# Wait for a job to be running
+#
+# Globals:
+#   FLINK_DIR
+# Arguments:
+#   job_id
+# Returns:
+#   None
+###################################
 function wait_job_running {
   for i in {1..10}; do
     JOB_LIST_RESULT=$("$FLINK_DIR"/bin/flink list | grep "$1")
