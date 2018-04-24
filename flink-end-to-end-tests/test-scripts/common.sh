@@ -377,6 +377,24 @@ function fail {
     fail_on_non_zero_exit_code 1 "$1"
 }
 
+# Returns the ip address of the queryable state server
+function get_queryable_state_server_ip {
+    local ip=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log \
+        | grep "Started Queryable State Server" \
+        | awk '{split($11, a, "/"); split(a[2], b, ":"); print b[1]}')
+
+    printf "${ip} \n"
+}
+
+# Returns the ip address of the queryable state server
+function get_queryable_state_proxy_port {
+    local port=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log \
+        | grep "Started Queryable State Proxy Server" \
+        | awk '{split($12, a, "/"); split(a[2], b, ":"); split(b[2], c, "."); print c[1]}')
+
+    printf "${port} \n"
+}
+
 # Expect a string to appear in the log files of the task manager before a given timeout
 # $1: expected string
 # $2: timeout in seconds

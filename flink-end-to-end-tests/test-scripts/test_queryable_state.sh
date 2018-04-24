@@ -19,44 +19,44 @@
 
 source "$(dirname "$0")"/common.sh
 
-# setup
-echo "Moving flink-queryable-state-runtime from opt/ to lib/"
-mv ${FLINK_DIR}/opt/flink-queryable-state-runtime* ${FLINK_DIR}/lib/
-fail_on_non_zero_exit_code $? "Could not move queryable state runtime to /lib, aborting tests."
+function run_test {
+    link_queryable_state_lib
+    start_cluster
 
-start_cluster
+    TEST_PROGRAM_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailApp.jar
+    CLIENT_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailClient.jar
 
-TEST_PROGRAM_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailApp.jar   # app with queryable state
-CLIENT_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailClient.jar      # jar that queries the state
-STREAM_KEY="some_key"                                                                               # key of which the state is queried
-STATE_NAME="value-state"                                                                            # state that gets queried
-PORT="9069"                                                                                         # port to query from
-QUERY_NAME="current-value-query"                                                                    # name of the query
+    # start app with queryable state and wait for it to be available
+    JOB_ID=$(${FLINK_DIR}/bin/flink run \
+        -p 1 \
+        -d ${TEST_PROGRAM_JAR} \
+        --state-backend $1 \
+        --tmp-dir file://${TEST_DATA_DIR} \
+        | awk '{print $NF}' | tail -n 1)
 
-# start app with queryable state and wait for it to be available
-JOB_ID=$(${FLINK_DIR}/bin/flink run -p 1 -d ${TEST_PROGRAM_JAR} --state-backend $1 --tmp-dir file://${TEST_DATA_DIR} | awk '{print $NF}' | tail -n 1)
+    wait_job_running ${JOB_ID}
 
-expect_in_taskmanager_logs "Flat Map.*switched from DEPLOYING to RUNNING" 10
+    # run the client and query state the first time
+    first_result=$(java -jar ${CLIENT_JAR} \
+        --host $(get_queryable_state_server_ip) \
+        --port $(get_queryable_state_proxy_port) \
+        --job-id ${JOB_ID})
 
-# get host ip address of queryable state from log files
-HOST=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log | grep "Started Queryable State Server" \
-    | awk '{split($11, a, "/"); split(a[2], b, ":"); print b[1]}')
+    EXIT_CODE=$?
 
-# run the client and query state the first time
-first_result=$(java -jar ${CLIENT_JAR} \
-    --host ${HOST} \
-    --port ${PORT} \
-    --job-id ${JOB_ID})
+    # cancel that job that we ran as a daemon
+    ${FLINK_DIR}/bin/flink cancel ${JOB_ID}
+    expect_in_taskmanager_logs "Un-registering task and sending final execution state CANCELED to JobManager for task Flat" 10
 
-EXIT_CODE=$?
+    # Exit
+    exit ${EXIT_CODE}
+}
 
-# cancel that job that we ran as a daemon
-${FLINK_DIR}/bin/flink cancel ${JOB_ID}
-expect_in_taskmanager_logs "Un-registering task and sending final execution state CANCELED to JobManager for task Flat" 10
+function test_cleanup {
+    unlink_queryable_state_lib
+    clean_out_files
+    cleanup # delegate to common cleanup method
+}
 
-# clean up
-echo "Moving flink-queryable-state-runtime from lib/ to opt/"
-mv ${FLINK_DIR}/lib/flink-queryable-state-runtime* ${FLINK_DIR}/opt/
-
-# Exit
-exit ${EXIT_CODE}
+trap test_cleanup EXIT
+run_test
