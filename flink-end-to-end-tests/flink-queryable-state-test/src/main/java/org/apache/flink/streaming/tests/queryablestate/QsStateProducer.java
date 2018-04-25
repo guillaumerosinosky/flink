@@ -33,7 +33,7 @@ import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
 import org.apache.flink.util.Collector;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
@@ -47,7 +47,7 @@ import java.util.Random;
  * timestamps and passes it to a stateful {@link org.apache.flink.api.common.functions.FlatMapFunction},
  * where it is exposed as queryable state.
  */
-public class QsBugPoc {
+public class QsStateProducer {
 
 	public static final String QUERYABLE_STATE_NAME = "state";
 	public static final String STATE_NAME = "state";
@@ -75,7 +75,7 @@ public class QsBugPoc {
 		}
 
 		env.setStateBackend(stateBackend);
-		env.enableCheckpointing(1000);
+		env.enableCheckpointing(1000L);
 		env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
 		env.getCheckpointConfig().setMinPauseBetweenCheckpoints(0);
 
@@ -94,31 +94,39 @@ public class QsBugPoc {
 		env.execute();
 	}
 
-	private static class EmailSource implements SourceFunction<Email> {
+	private static class EmailSource extends RichSourceFunction<Email> {
 
 		private static final long serialVersionUID = -7286937645300388040L;
 
 		private Random random;
-		private boolean isRunning = true;
+		private volatile boolean isRunning = true;
+
+		@Override
+		public void open(Configuration parameters) throws Exception {
+			super.open(parameters);
+			this.random = new Random();
+		}
 
 		@Override
 		public void run(SourceContext<Email> ctx) throws Exception {
 			// Sleep for 10 seconds on start to allow time to copy jobid
-			for (int i = 0; i < 100; i++) {
-				if (!isRunning) {
-					break;
-				}
-
-				Thread.sleep(100);
+			for (int i = 0; i < 100 && isRunning; i++) {
+				Thread.sleep(100L);
 			}
 
+			int types = LabelSurrogate.Type.values().length;
+
 			while (isRunning) {
-				final EmailId emailId = new EmailId(Integer.toString(getRandom().nextInt()));
-				final Instant timestamp = Instant.now().minus(Duration.ofDays(1));
-				final String foo = String.format("foo #%d", getRandom().nextInt(100));
-				final LabelSurrogate label = new LabelSurrogate(LabelSurrogate.Type.BAR, "bar");
+				int r = random.nextInt(100);
+
+				final EmailId emailId = new EmailId(Integer.toString(random.nextInt()));
+				final Instant timestamp = Instant.now().minus(Duration.ofDays(1L));
+				final String foo = String.format("foo #%d", r);
+				final LabelSurrogate label = new LabelSurrogate(LabelSurrogate.Type.values()[r % types], "bar");
+
 				ctx.collect(new Email(emailId, timestamp, foo, label));
-				Thread.sleep(getRandom().nextInt(100));
+
+				Thread.sleep(100L);
 			}
 		}
 
@@ -126,18 +134,11 @@ public class QsBugPoc {
 		public void cancel() {
 			isRunning = false;
 		}
-
-		private Random getRandom() {
-			if (random == null) {
-				random = new Random();
-			}
-
-			return random;
-		}
 	}
 
-	private static class MyFlatMap extends RichFlatMapFunction<Email, Object> implements
-		CheckpointedFunction {
+	private static class MyFlatMap extends RichFlatMapFunction<Email, Object> implements CheckpointedFunction {
+
+		private static final long serialVersionUID = 7821128115999005941L;
 
 		private transient MapState<EmailId, EmailInformation> state;
 		private transient int count = -1;
@@ -151,21 +152,22 @@ public class QsBugPoc {
 
 		@Override
 		public void open(Configuration parameters) {
-			MapStateDescriptor<EmailId, EmailInformation> stateDescriptor = new MapStateDescriptor<>(
-				STATE_NAME,
-				TypeInformation.of(new TypeHint<EmailId>() {
-				}),
-				TypeInformation.of(new TypeHint<EmailInformation>() {
-				})
-			);
+			MapStateDescriptor<EmailId, EmailInformation> stateDescriptor =
+					new MapStateDescriptor<>(
+							STATE_NAME,
+							TypeInformation.of(new TypeHint<EmailId>() {
 
+							}),
+							TypeInformation.of(new TypeHint<EmailInformation>() {
+
+							})
+					);
 			stateDescriptor.setQueryable(QUERYABLE_STATE_NAME);
-
 			state = getRuntimeContext().getMapState(stateDescriptor);
 		}
 
 		@Override
-		public void snapshotState(FunctionSnapshotContext context) throws Exception {
+		public void snapshotState(FunctionSnapshotContext context) {
 			if (count == -1) {
 				System.out.println("Not yet started processing again");
 			}
@@ -173,7 +175,7 @@ public class QsBugPoc {
 		}
 
 		@Override
-		public void initializeState(FunctionInitializationContext context) throws Exception {
+		public void initializeState(FunctionInitializationContext context) {
 
 		}
 	}

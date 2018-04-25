@@ -45,10 +45,6 @@ function run_test {
 
     EXIT_CODE=$?
 
-    # cancel that job that we ran as a daemon
-    ${FLINK_DIR}/bin/flink cancel ${JOB_ID}
-    expect_in_taskmanager_logs "Un-registering task and sending final execution state CANCELED to JobManager for task Flat" 10
-
     # Exit
     exit ${EXIT_CODE}
 }

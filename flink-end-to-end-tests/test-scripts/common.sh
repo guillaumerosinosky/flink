@@ -169,9 +169,9 @@ function start_and_wait_for_tm {
         QUERY_RESULT=$(curl "http://localhost:8081/taskmanagers" 2> /dev/null || true)
 
       if [[ "$QUERY_RESULT" == "" ]]; then
-        echo "Dispatcher/TaskManagers are not yet up"
+        echo "TaskManager is not yet up"
       elif [[ "$QUERY_RESULT" != "{\"taskmanagers\":[]}" ]]; then
-        echo "Dispatcher REST endpoint is up."
+        echo "TaskManager is up."
         break
       fi
 

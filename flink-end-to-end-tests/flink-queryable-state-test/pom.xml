@@ -93,7 +93,7 @@
 							<archive>
 								<manifestEntries>
 									<program-class>
-										org.apache.flink.streaming.tests.queryablestate.QsBugPoc
+										org.apache.flink.streaming.tests.queryablestate.QsStateProducer
 									</program-class>
 								</manifestEntries>
 							</archive>
@@ -121,7 +121,7 @@
 								<transformer
 									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
 									<mainClass>
-										org.apache.flink.streaming.tests.queryablestate.QsBugClient
+										org.apache.flink.streaming.tests.queryablestate.QsStateClient
 									</mainClass>
 								</transformer>
 							</transformers>

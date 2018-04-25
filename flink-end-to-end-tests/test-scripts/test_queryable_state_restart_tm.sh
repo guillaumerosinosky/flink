@@ -66,40 +66,44 @@ function run_test() {
 
     sleep 20 # sleep a little to have some state accumulated
 
-    echo SERVER: $(get_queryable_state_server_ip)
-    echo PORT: $(get_queryable_state_proxy_port)
+    SERVER=$(get_queryable_state_server_ip)
+    PORT=$(get_queryable_state_proxy_port)
+
+    echo SERVER: ${SERVER}
+    echo PORT: ${PORT}
 
     java -jar ${QUERYABLE_STATE_CLIENT_JAR} \
-        --host $(get_queryable_state_server_ip) \
-        --port $(get_queryable_state_proxy_port) \
+        --host ${SERVER} \
+        --port ${PORT} \
         --iterations 1 \
         --job-id ${JOB_ID}
 
     if [ $? != 0 ]; then
-        echo "An error occured when executing queryable state client"
+        echo "An error occurred when executing queryable state client"
         exit 1
     fi
 
-    ${FLINK_DIR}/bin/taskmanager.sh stop
+    kill_random_taskmanager
+
     latest_snapshot_count=$(cat $FLINK_DIR/log/*out* | grep "on snapshot" | tail -n 1 | awk '{print $4}')
     echo "Latest snapshot count was ${latest_snapshot_count}"
 
-    sleep 65 # this is a little longer than the heartbeat timeout so that the TM is gone
+    sleep 10 # this is a little longer than the heartbeat timeout so that the TM is gone
 
     start_and_wait_for_tm
 
-    sleep 20 # sleep a little to have state restored
+    wait_job_running ${JOB_ID}
 
     local num_entries_in_map_state_after=$(java -jar ${QUERYABLE_STATE_CLIENT_JAR} \
-        --host $(get_queryable_state_server_ip) \
-        --port $(get_queryable_state_proxy_port) \
+        --host ${SERVER} \
+        --port ${PORT} \
         --iterations 1 \
         --job-id ${JOB_ID} | grep "MapState has" | awk '{print $3}')
 
     echo "after: $num_entries_in_map_state_after"
 
     if ((latest_snapshot_count > num_entries_in_map_state_after)); then
-        echo "An error occured"
+        echo "An error occurred"
         EXIT_CODE=1
     fi
 
@@ -107,9 +111,8 @@ function run_test() {
 }
 
 function test_cleanup {
-    clean_stdout_files
     unlink_queryable_state_lib
-    stop_cluster
+    clean_stdout_files
     cleanup
 }
 

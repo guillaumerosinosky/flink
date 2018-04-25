@@ -26,6 +26,7 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
+import org.apache.flink.queryablestate.exceptions.UnknownKeyOrNamespaceException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
 
@@ -36,10 +37,10 @@ import java.util.concurrent.ExecutionException;
  * A simple implementation of a queryable state client.
  * This client queries the state for a while (~2.5 mins) and prints
  * out the values that it found in the map state
- * <p/>
- * Usage: java -jar QueryableStateClient.jar --host HOST --port PORT --job-id JOB_ID
+ *
+ * <p>Usage: java -jar QueryableStateClient.jar --host HOST --port PORT --job-id JOB_ID
  */
-public class QsBugClient {
+public class QsStateClient {
 
 	public static final String STATE_NAME = "state";
 	public static final String QUERY_NAME = "state";
@@ -55,29 +56,35 @@ public class QsBugClient {
 		int numIterations = parameters.getInt("iterations", 1500);
 
 		QueryableStateClient client = new QueryableStateClient(host, port);
-
-		MapStateDescriptor<EmailId, EmailInformation> stateDescriptor = new MapStateDescriptor<>(
-			STATE_NAME,
-			TypeInformation.of(new TypeHint<EmailId>() {
-			}),
-			TypeInformation.of(new TypeHint<EmailInformation>() {
-			})
-		);
-
 		client.setExecutionConfig(new ExecutionConfig());
 
+		MapStateDescriptor<EmailId, EmailInformation> stateDescriptor =
+				new MapStateDescriptor<>(
+						STATE_NAME,
+						TypeInformation.of(new TypeHint<EmailId>() {
+
+						}),
+						TypeInformation.of(new TypeHint<EmailInformation>() {
+
+						})
+				);
+
 		// wait for state to exist
-		for (int i = 0; i < 60; i++) { // ~30s
+		for (int i = 0; i < 240; i++) { // ~120s
 			try {
 				getMapState(jobId, client, stateDescriptor);
 				break;
 			} catch (ExecutionException e) {
-				System.err.println("State does not exist yet; sleeping 500ms");
-				Thread.sleep(500);
+				if (e.getCause() instanceof UnknownKeyOrNamespaceException) {
+					System.err.println("State does not exist yet; sleeping 500ms");
+					Thread.sleep(500L);
+				} else {
+					throw e;
+				}
 			}
 
-			if (i == 59) {
-				throw new RuntimeException("Timeout: state doesn't exist after 30s");
+			if (i == 239) {
+				throw new RuntimeException("Timeout: state doesn't exist after 120s");
 			}
 		}
 
@@ -95,24 +102,23 @@ public class QsBugClient {
 				System.out.println("First entry: " + key + " --> " + value);
 			}
 
-			Thread.sleep(100);
+			Thread.sleep(100L);
 		}
 	}
 
 	private static MapState<EmailId, EmailInformation> getMapState(
-		String jobId,
-		QueryableStateClient client,
-		MapStateDescriptor<EmailId, EmailInformation> stateDescriptor) throws InterruptedException, ExecutionException {
+			String jobId,
+			QueryableStateClient client,
+			MapStateDescriptor<EmailId, EmailInformation> stateDescriptor) throws InterruptedException, ExecutionException {
 
 		CompletableFuture<MapState<EmailId, EmailInformation>> resultFuture =
-			client.getKvState(
-				JobID.fromHexString(jobId),
-				QUERY_NAME,
-				"", // which key of the keyed state to access
-				BasicTypeInfo.STRING_TYPE_INFO,
-				stateDescriptor);
+				client.getKvState(
+						JobID.fromHexString(jobId),
+						QUERY_NAME,
+						"", // which key of the keyed state to access
+						BasicTypeInfo.STRING_TYPE_INFO,
+						stateDescriptor);
 
-		final MapState<EmailId, EmailInformation> mapState;
 		return resultFuture.get();
 	}
 }
