@@ -88,12 +88,16 @@ function run_test() {
     latest_snapshot_count=$(cat $FLINK_DIR/log/*out* | grep "on snapshot" | tail -n 1 | awk '{print $4}')
     echo "Latest snapshot count was ${latest_snapshot_count}"
 
-    sleep 10 # this is a little longer than the heartbeat timeout so that the TM is gone
+    # setup for java.lang.RuntimeException: Error while deserializing the user key.:
+    sleep 65 # this is a little longer than the heartbeat timeout so that the TM is gone
 
     start_and_wait_for_tm
 
     wait_job_running ${JOB_ID}
 
+    # setup for java.lang.RuntimeException: Error while deserializing the user key.:
+    sleep 0
+    
     local num_entries_in_map_state_after=$(java -jar ${QUERYABLE_STATE_CLIENT_JAR} \
         --host ${SERVER} \
         --port ${PORT} \
