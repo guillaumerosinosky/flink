@@ -58,38 +58,14 @@
 				<version>2.4</version>
 
 				<executions>
-					<!-- ClassLoaderTestProgram -->
 					<execution>
-						<id>ClassLoaderTestProgram</id>
+						<id>QsStateProducer</id>
 						<phase>package</phase>
 						<goals>
 							<goal>jar</goal>
 						</goals>
 						<configuration>
-							<classifier>ClassLoaderTestProgram</classifier>
-
-							<archive>
-								<manifestEntries>
-									<program-class>org.apache.flink.streaming.tests.ClassLoaderTestProgram</program-class>
-								</manifestEntries>
-							</archive>
-
-							<includes>
-								<include>org/apache/flink/streaming/tests/ClassLoaderTestProgram.class</include>
-								<include>org/apache/flink/runtime/taskmanager/TaskManager.class</include>
-								<include>.version.properties</include>
-							</includes>
-						</configuration>
-					</execution>
-
-					<execution>
-						<id>QueryableStateEmailApp</id>
-						<phase>package</phase>
-						<goals>
-							<goal>jar</goal>
-						</goals>
-						<configuration>
-							<classifier>QueryableStateEmailApp</classifier>
+							<classifier>QsStateProducer</classifier>
 							<archive>
 								<manifestEntries>
 									<program-class>
@@ -108,7 +84,7 @@
 				<executions>
 
 					<execution>
-						<id>QueryableStateEmailClient</id>
+						<id>QsStateClient</id>
 						<phase>package</phase>
 						<goals>
 							<goal>shade</goal>
@@ -125,8 +101,7 @@
 									</mainClass>
 								</transformer>
 							</transformers>
-							<finalName>QueryableStateEmailClient</finalName>
-							<!-- TODO: This includes all dependencies, might need to be reduced -->
+							<finalName>QsStateClient</finalName>
 						</configuration>
 					</execution>
 				</executions>
@@ -146,8 +121,9 @@
 						</goals>
 						<configuration>
 							<target>
-								<copy file="${project.basedir}/target/flink-queryable-state-test_${scala.binary.version}-${project.version}-ClassLoaderTestProgram.jar" tofile="${project.basedir}/target/ClassLoaderTestProgram.jar" />
-								<copy file="${project.basedir}/target/flink-queryable-state-test_${scala.binary.version}-${project.version}-QueryableStateEmailApp.jar" tofile="${project.basedir}/target/QueryableStateEmailApp.jar" />
+								<copy
+									file="${project.basedir}/target/flink-queryable-state-test_${scala.binary.version}-${project.version}-QsStateProducer.jar"
+									tofile="${project.basedir}/target/QsStateProducer.jar"/>
 							</target>
 						</configuration>
 					</execution>

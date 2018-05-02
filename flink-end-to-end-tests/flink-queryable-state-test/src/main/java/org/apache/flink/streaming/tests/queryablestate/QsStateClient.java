@@ -38,7 +38,7 @@ import java.util.concurrent.ExecutionException;
  * This client queries the state for a while (~2.5 mins) and prints
  * out the values that it found in the map state
  *
- * <p>Usage: java -jar QueryableStateClient.jar --host HOST --port PORT --job-id JOB_ID
+ * <p>Usage: java -jar QsStateClient.jar --host HOST --port PORT --job-id JOB_ID
  */
 public class QsStateClient {
 

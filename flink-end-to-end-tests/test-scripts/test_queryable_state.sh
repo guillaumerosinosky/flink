@@ -24,13 +24,13 @@ function run_test {
     link_queryable_state_lib
     start_cluster
 
-    TEST_PROGRAM_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailApp.jar
-    CLIENT_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QueryableStateEmailClient.jar
+    QUERYABLE_STATE_PRODUCER_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QsStateProducer.jar
+    QUERYABLE_STATE_CONSUMER_JAR=${TEST_INFRA_DIR}/../../flink-end-to-end-tests/flink-queryable-state-test/target/QsStateClient.jar
 
     # start app with queryable state and wait for it to be available
     JOB_ID=$(${FLINK_DIR}/bin/flink run \
         -p 1 \
-        -d ${TEST_PROGRAM_JAR} \
+        -d ${QUERYABLE_STATE_PRODUCER_JAR} \
         --state-backend $1 \
         --tmp-dir file://${TEST_DATA_DIR} \
         | awk '{print $NF}' | tail -n 1)
@@ -38,7 +38,7 @@ function run_test {
     wait_job_running ${JOB_ID}
 
     # run the client and query state the first time
-    first_result=$(java -jar ${CLIENT_JAR} \
+    first_result=$(java -jar ${QUERYABLE_STATE_CONSUMER_JAR} \
         --host $(get_queryable_state_server_ip) \
         --port $(get_queryable_state_proxy_port) \
         --job-id ${JOB_ID})
