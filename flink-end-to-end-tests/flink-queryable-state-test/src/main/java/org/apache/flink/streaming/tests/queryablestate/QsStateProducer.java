@@ -49,9 +49,6 @@ import java.util.Random;
  */
 public class QsStateProducer {
 
-	public static final String QUERYABLE_STATE_NAME = "state";
-	public static final String STATE_NAME = "state";
-
 	public static void main(final String[] args) throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
@@ -86,10 +83,10 @@ public class QsStateProducer {
 
 				@Override
 				public String getKey(Email value) throws Exception {
-					return "";
+					return QsConstants.KEY;
 				}
 			})
-			.flatMap(new MyFlatMap());
+			.flatMap(new TestFlatMap());
 
 		env.execute();
 	}
@@ -98,21 +95,21 @@ public class QsStateProducer {
 
 		private static final long serialVersionUID = -7286937645300388040L;
 
+		private transient volatile boolean isRunning;
+
 		private transient Random random;
-		private volatile boolean isRunning = true;
 
 		@Override
 		public void open(Configuration parameters) throws Exception {
 			super.open(parameters);
 			this.random = new Random();
+			this.isRunning = true;
 		}
 
 		@Override
 		public void run(SourceContext<Email> ctx) throws Exception {
 			// Sleep for 10 seconds on start to allow time to copy jobid
-			for (int i = 0; i < 100 && isRunning; i++) {
-				Thread.sleep(100L);
-			}
+			Thread.sleep(10000L);
 
 			int types = LabelSurrogate.Type.values().length;
 
@@ -128,7 +125,7 @@ public class QsStateProducer {
 					ctx.collect(new Email(emailId, timestamp, foo, label));
 				}
 
-				Thread.sleep(100L);
+				Thread.sleep(30L);
 			}
 		}
 
@@ -138,25 +135,18 @@ public class QsStateProducer {
 		}
 	}
 
-	private static class MyFlatMap extends RichFlatMapFunction<Email, Object> implements CheckpointedFunction {
+	private static class TestFlatMap extends RichFlatMapFunction<Email, Object> implements CheckpointedFunction {
 
 		private static final long serialVersionUID = 7821128115999005941L;
 
 		private transient MapState<EmailId, EmailInformation> state;
-		private transient int count = -1;
-
-		@Override
-		public void flatMap(Email value, Collector<Object> out) throws Exception {
-			state.put(value.getEmailId(), new EmailInformation(value));
-			count = Iterables.size(state.keys());
-			System.out.println("Count on flatmap: " + count);
-		}
+		private transient int count;
 
 		@Override
 		public void open(Configuration parameters) {
 			MapStateDescriptor<EmailId, EmailInformation> stateDescriptor =
 					new MapStateDescriptor<>(
-							STATE_NAME,
+							QsConstants.STATE_NAME,
 							TypeInformation.of(new TypeHint<EmailId>() {
 
 							}),
@@ -164,16 +154,20 @@ public class QsStateProducer {
 
 							})
 					);
-			stateDescriptor.setQueryable(QUERYABLE_STATE_NAME);
+			stateDescriptor.setQueryable(QsConstants.QUERY_NAME);
 			state = getRuntimeContext().getMapState(stateDescriptor);
+			count = -1;
+		}
+
+		@Override
+		public void flatMap(Email value, Collector<Object> out) throws Exception {
+			state.put(value.getEmailId(), new EmailInformation(value));
+			count = Iterables.size(state.keys());
 		}
 
 		@Override
 		public void snapshotState(FunctionSnapshotContext context) {
-			if (count == -1) {
-				System.out.println("Not yet started processing again");
-			}
-			System.out.println("Count on snapshot: " + count);
+			System.out.println("Count on snapshot: " + count); // we look for it in the test
 		}
 
 		@Override

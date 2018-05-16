@@ -18,48 +18,12 @@
 package org.apache.flink.streaming.tests.queryablestate;
 
 /**
- * A label surrogate.
+ * A class containing the constants used in the end-to-end test.
  */
-public class LabelSurrogate {
+public class QsConstants {
 
-	private Type type;
-	private String foo;
+	public static final String QUERY_NAME = "state";
+	public static final String STATE_NAME = "state";
 
-	public LabelSurrogate(Type type, String foo) {
-		this.type = type;
-		this.foo = foo;
-	}
-
-	public Type getType() {
-		return type;
-	}
-
-	public void setType(Type type) {
-		this.type = type;
-	}
-
-	public String getFoo() {
-		return foo;
-	}
-
-	public void setFoo(String foo) {
-		this.foo = foo;
-	}
-
-	@Override
-	public String toString() {
-		return "LabelSurrogate{" +
-				"type=" + type +
-				", foo='" + foo + '\'' +
-				'}';
-	}
-
-	/**
-	 * An exemplary enum.
-	 */
-	public enum Type {
-		FOO,
-		BAR,
-		BAZ
-	}
+	public static final String KEY = "";
 }

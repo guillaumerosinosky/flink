@@ -22,7 +22,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 /**
- * POJO representing an email.
+ * Toy email resentation.
  */
 public class Email {
 

@@ -172,22 +172,28 @@ function start_cluster {
 
 function start_and_wait_for_tm {
 
-    ${FLINK_DIR}/bin/taskmanager.sh start
+  tm_query_result=$(curl -s "http://localhost:8081/taskmanagers")
 
-    for i in {1..10}; do
-        # without the || true this would exit our script if the JobManager is not yet up
-        QUERY_RESULT=$(curl "http://localhost:8081/taskmanagers" 2> /dev/null || true)
+  # we assume that the cluster is running
+  if ! [[ ${tm_query_result} =~ \{\"taskmanagers\":\[.*\]\} ]]; then
+    echo "Your cluster seems to be unresponsive at the moment: ${tm_query_result}" 1>&2
+    exit 1
+  fi
 
-      if [[ "$QUERY_RESULT" == "" ]]; then
-        echo "TaskManager is not yet up"
-      elif [[ "$QUERY_RESULT" != "{\"taskmanagers\":[]}" ]]; then
-        echo "TaskManager is up."
-        break
-      fi
+  running_tms=`curl -s "http://localhost:8081/taskmanagers" | grep -o "id" | wc -l`
 
-      echo "Waiting for dispatcher REST endpoint to come up..."
-      sleep 1
-    done
+  ${FLINK_DIR}/bin/taskmanager.sh start
+
+  for i in {1..10}; do
+    local new_running_tms=`curl -s "http://localhost:8081/taskmanagers" | grep -o "id" | wc -l`
+    if [ $((new_running_tms-running_tms)) -eq 0 ]; then
+      echo "TaskManager is not yet up."
+    else
+      echo "TaskManager is up."
+      break
+    fi
+    sleep 4
+  done
 }
 
 function check_logs_for_errors {

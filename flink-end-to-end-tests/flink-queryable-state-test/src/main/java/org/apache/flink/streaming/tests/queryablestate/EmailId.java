@@ -25,7 +25,8 @@ import java.util.Objects;
  */
 public class EmailId implements Serializable {
 
-	private static final long serialVersionUID = 4308637895987331290L;
+	private static final long serialVersionUID = -5001464312464872467L;
+
 	private String emailId;
 
 	public EmailId() {

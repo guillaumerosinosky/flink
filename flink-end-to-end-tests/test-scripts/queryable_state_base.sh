@@ -39,6 +39,7 @@ function unlink_queryable_state_lib {
 function get_queryable_state_server_ip {
     local ip=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log \
         | grep "Started Queryable State Server" \
+        | head -1 \
         | awk '{split($11, a, "/"); split(a[2], b, ":"); print b[1]}')
 
     printf "${ip} \n"
@@ -48,6 +49,7 @@ function get_queryable_state_server_ip {
 function get_queryable_state_proxy_port {
     local port=$(cat ${FLINK_DIR}/log/flink*taskexecutor*log \
         | grep "Started Queryable State Proxy Server" \
+        | head -1 \
         | awk '{split($12, a, "/"); split(a[2], b, ":"); split(b[2], c, "."); print c[1]}')
 
     printf "${port} \n"

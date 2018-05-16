@@ -28,8 +28,7 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
 import org.apache.flink.queryablestate.exceptions.UnknownKeyOrNamespaceException;
 
-import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
-
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -42,8 +41,7 @@ import java.util.concurrent.ExecutionException;
  */
 public class QsStateClient {
 
-	public static final String STATE_NAME = "state";
-	public static final String QUERY_NAME = "state";
+	private static final int BOOTSTRAP_RETRIES = 240;
 
 	public static void main(final String[] args) throws Exception {
 
@@ -60,7 +58,7 @@ public class QsStateClient {
 
 		MapStateDescriptor<EmailId, EmailInformation> stateDescriptor =
 				new MapStateDescriptor<>(
-						STATE_NAME,
+						QsConstants.STATE_NAME,
 						TypeInformation.of(new TypeHint<EmailId>() {
 
 						}),
@@ -70,7 +68,7 @@ public class QsStateClient {
 				);
 
 		// wait for state to exist
-		for (int i = 0; i < 240; i++) { // ~120s
+		for (int i = 0; i < BOOTSTRAP_RETRIES; i++) { // ~120s
 			try {
 				getMapState(jobId, client, stateDescriptor);
 				break;
@@ -83,7 +81,7 @@ public class QsStateClient {
 				}
 			}
 
-			if (i == 239) {
+			if (i == (BOOTSTRAP_RETRIES - 1)) {
 				throw new RuntimeException("Timeout: state doesn't exist after 120s");
 			}
 		}
@@ -94,13 +92,14 @@ public class QsStateClient {
 			MapState<EmailId, EmailInformation> mapState =
 				getMapState(jobId, client, stateDescriptor);
 
-			int size = Iterables.size(mapState.values());
-			System.out.println("MapState has " + size + " entries");
-			if (size > 0) {
-				EmailId key = mapState.keys().iterator().next();
-				EmailInformation value = mapState.get(key);
-				System.out.println("First entry: " + key + " --> " + value);
+			int counter = 0;
+			for (Map.Entry<EmailId, EmailInformation> entry: mapState.entries()) {
+				// this is to force deserialization
+				entry.getKey();
+				entry.getValue();
+				counter++;
 			}
+			System.out.println("MapState has " + counter + " entries"); // we look for it in the test
 
 			Thread.sleep(100L);
 		}
@@ -114,8 +113,8 @@ public class QsStateClient {
 		CompletableFuture<MapState<EmailId, EmailInformation>> resultFuture =
 				client.getKvState(
 						JobID.fromHexString(jobId),
-						QUERY_NAME,
-						"", // which key of the keyed state to access
+						QsConstants.QUERY_NAME,
+						QsConstants.KEY, // which key of the keyed state to access
 						BasicTypeInfo.STRING_TYPE_INFO,
 						stateDescriptor);
 
