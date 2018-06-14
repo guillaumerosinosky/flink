@@ -24,6 +24,7 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.operators.join.JoinType;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.api.functions.TimeBoundedJoinFunction;
@@ -48,6 +49,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Queue;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 // TODO: Parameterize to use different state backends --> This would require circular dependency on flink rocksdb
 
@@ -211,6 +213,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		int bucketGranularity = 1;
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
+			JoinType.INNER,
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
@@ -293,6 +296,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 		int bucketGranularity = 5;
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator = new TimeBoundedStreamJoinOperator<>(
+			JoinType.INNER,
 			lowerBound,
 			upperBound,
 			lowerBoundInclusive,
@@ -417,10 +421,88 @@ public class TimeBoundedStreamJoinOperatorTest {
 	}
 
 	@Test
+	public void testDoesntCleanupToAggressivly() throws Exception {
+		setupHarness(0, true, 0, true)
+			.processElement1(2)
+			.processElement1(3)
+			.processElement2(2)
+			.processElement2(1)
+			.processElement2(3)
+			.processElement1(1)
+			.processElement1(4)
+			.processElement2(5)
+			.processWatermark1(3)
+			.processWatermark2(3)
+			.processElement2(4)
+			.processElement1(6)
+			.processElement2(6)
+			.processElement2(11)
+			.processElement1(7)
+			.processElement2(7)
+			.processElement1(5)
+			.processElement1(10)
+			.processElement1(8)
+			.processElement2(8)
+			.processWatermark1(8)
+			.processWatermark2(8)
+			.processElement2(14)
+			.processElement1(9)
+			.processElement2(18)
+			.processElement2(10)
+			.processElement2(13)
+			.processElement1(12)
+			.processElement2(12)
+			.processElement1(13)
+			.processElement1(11)
+			.processElement2(9)
+			.processElement2(17)
+			.processElement1(14)
+			.processWatermark1(14)
+			.processElement2(15)
+			.processElement1(16)
+			.processWatermark2(14)
+			.processElement1(15)
+			.processElement2(16)
+			.processElement2(20)
+			.processElement1(17)
+			.processElement1(20)
+			.processElement1(18)
+			.processElement1(19)
+			.processElement2(19)
+			.processWatermark1(20)
+			.processWatermark2(20)
+			.andExpect(
+				streamRecordOf(1, 1),
+				streamRecordOf(2, 2),
+				streamRecordOf(3, 3),
+				streamRecordOf(4, 4),
+				streamRecordOf(5, 5),
+				streamRecordOf(6, 6),
+				streamRecordOf(7, 7),
+				streamRecordOf(8, 8),
+				streamRecordOf(9, 9),
+				streamRecordOf(10, 10),
+				streamRecordOf(11, 11),
+				streamRecordOf(12, 12),
+				streamRecordOf(13, 13),
+				streamRecordOf(14, 14),
+				streamRecordOf(15, 15),
+				streamRecordOf(16, 16),
+				streamRecordOf(17, 17),
+				streamRecordOf(18, 18),
+				streamRecordOf(19, 19),
+				streamRecordOf(20, 20)
+			)
+			.noLateRecords()
+			.close();
+	}
+
+	@Test
 	public void testContextCorrectLeftTimestamp() throws Exception {
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
 			new TimeBoundedStreamJoinOperator<>(
+				JoinType.INNER,
 				-1,
 				1,
 				true,
@@ -460,6 +542,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 	public void testReturnsCorrectTimestamp() throws Exception {
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
 			new TimeBoundedStreamJoinOperator<>(
+				JoinType.INNER,
 				-1,
 				1,
 				true,
@@ -500,6 +583,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> op =
 			new TimeBoundedStreamJoinOperator<>(
+				JoinType.INNER,
 				-1,
 				1,
 				true,
@@ -614,11 +698,15 @@ public class TimeBoundedStreamJoinOperatorTest {
 		Iterable<StreamRecord<Tuple2<TestElem, TestElem>>> expectedOutput,
 		Queue<Object> actualOutput) {
 
-		int actualSize = actualOutput.stream()
+		List<Object> actualWithoutWatermark = actualOutput.stream()
 			.filter(elem -> elem instanceof StreamRecord)
-			.collect(Collectors.toList())
-			.size();
+			.sorted((a, b) -> (int)(((StreamRecord) a).getTimestamp() - ((StreamRecord) b).getTimestamp()))
+			.collect(Collectors.toList());
 
+		int actualSize = actualWithoutWatermark.size();
+
+		System.out.println("Expected: " + expectedOutput);
+		System.out.println("Actual:   " + actualWithoutWatermark);
 		int expectedSize = Iterables.size(expectedOutput);
 
 		Assert.assertEquals(
@@ -639,6 +727,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator =
 			new TimeBoundedStreamJoinOperator<>(
+				JoinType.INNER,
 				lowerBound,
 				upperBound,
 				lowerBoundInclusive,
@@ -664,6 +753,7 @@ public class TimeBoundedStreamJoinOperatorTest {
 
 		TimeBoundedStreamJoinOperator<String, TestElem, TestElem, Tuple2<TestElem, TestElem>> operator =
 			new TimeBoundedStreamJoinOperator<>(
+				JoinType.INNER,
 				lowerBound,
 				upperBound,
 				lowerBoundInclusive,

@@ -26,6 +26,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.BooleanSerializer;
 import org.apache.flink.api.common.typeutils.base.ListSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
+import org.apache.flink.api.java.operators.join.JoinType;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
@@ -39,10 +40,16 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+
+import static org.apache.flink.api.java.operators.join.JoinType.FULL_OUTER;
+import static org.apache.flink.api.java.operators.join.JoinType.LEFT_OUTER;
+import static org.apache.flink.api.java.operators.join.JoinType.RIGHT_OUTER;
 
 /**
  * A TwoInputStreamOperator to execute time-bounded stream inner joins.
@@ -85,6 +92,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private static final String RIGHT_BUFFER = "RIGHT_BUFFER";
 	private static final String CLEANUP_TIMER_NAME = "CLEANUP_TIMER";
 
+	private JoinType joinType;
+
 	private final long lowerBound;
 	private final long upperBound;
 
@@ -110,6 +119,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	private transient InternalTimerService<VoidNamespace> internalTimerService;
 
+	private Logger logger = LoggerFactory.getLogger(TimeBoundedStreamJoinOperator.class);
+
 	/**
 	 * Creates a new TimeBoundedStreamJoinOperator.
 	 *
@@ -123,6 +134,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	 *                            whenever two elements of T1 and T2 are joined
 	 */
 	public TimeBoundedStreamJoinOperator(
+		JoinType joinType,
 			long lowerBound,
 			long upperBound,
 			boolean lowerBoundInclusive,
@@ -137,6 +149,8 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		Preconditions.checkArgument(lowerBound <= upperBound,
 			"lowerBound <= upperBound must be fulfilled");
 		Preconditions.checkArgument(bucketGranularity > 0, "bucket size must be greater than zero");
+
+		this.joinType = joinType;
 
 		this.lowerBound = lowerBound;
 		this.upperBound = upperBound;
@@ -258,8 +272,7 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 			return;
 		}
 
-		addToBuffer(ourBuffer, ourValue, ourTimestamp);
-
+		boolean hasBeenJoined = false;
 		for (Map.Entry<Long, List<Tuple3<OTHER, Long, Boolean>>> entry : otherBuffer.entries()) {
 			long bucketStart = entry.getKey();
 			long bucketEnd = bucketStart + bucketGranularity;
@@ -279,22 +292,26 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 				// we are operating on. This is passed in via 'isLeft'
 				if (isLeft && shouldBeJoined(ourTimestamp, tuple.f1)) {
 					collect((T1) ourValue, (T2) tuple.f0, ourTimestamp, tuple.f1);
+					hasBeenJoined = true;
+					tuple.f2 = true;
 				} else if (!isLeft && shouldBeJoined(tuple.f1, ourTimestamp)) {
 					collect((T1) tuple.f0, (T2) ourValue, tuple.f1, ourTimestamp);
+					tuple.f2 = true;
+					hasBeenJoined = true;
 				}
+			}
+
+			if (hasBeenJoined) {
+				entry.setValue(fromBucket);
 			}
 		}
 
-		registerCleanupTimer();
+		addToBuffer(ourBuffer, ourValue, ourTimestamp, hasBeenJoined);
+		markForRemovalAt(calculateBucket(ourTimestamp - lowerBound));
 	}
 
-	private void registerCleanupTimer() {
-		if (this.lastWatermark == Long.MIN_VALUE) {
-			return;
-		}
-
-		long triggerTime = this.lastWatermark + 1;
-		internalTimerService.registerEventTimeTimer(VoidNamespace.INSTANCE, triggerTime);
+	private void markForRemovalAt(long bucket) {
+		internalTimerService.registerEventTimeTimer(VoidNamespace.INSTANCE, bucket);
 	}
 
 	private boolean dataIsLate(long rightTs) {
@@ -319,25 +336,11 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		output.emitWatermark(new Watermark(this.lastWatermark - watermarkDelay));
 	}
 
-	private void collect(T1 left, T2 right, long leftTs, long rightTs) throws Exception {
+	private void collect(T1 left, T2 right, Long leftTs, Long rightTs) throws Exception {
 		collector.setAbsoluteTimestamp(leftTs);
 		context.leftTs = leftTs;
 		context.rightTs = rightTs;
 		userFunction.processElement(left, right, context, this.collector);
-	}
-
-	private <T> void removeFromBufferUntil(
-		MapState<Long, List<Tuple3<T, Long, Boolean>>> buffer,
-		long maxCleanup
-	) throws Exception {
-
-		Iterator<Map.Entry<Long, List<Tuple3<T, Long, Boolean>>>> iterator = buffer.iterator();
-		while (iterator.hasNext()) {
-			Map.Entry<Long, List<Tuple3<T, Long, Boolean>>> next = iterator.next();
-			if (next.getKey() + bucketGranularity <= maxCleanup) {
-				iterator.remove();
-			}
-		}
 	}
 
 	private boolean shouldBeJoined(long leftTs, long rightTs) {
@@ -358,14 +361,15 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private <T> void addToBuffer(
 		MapState<Long, List<Tuple3<T, Long, Boolean>>> buffer,
 		T value,
-		long ts
+		long ts,
+		boolean hasBeenJoined
 	) throws Exception {
 
 		long bucket = calculateBucket(ts);
 		Tuple3<T, Long, Boolean> elem = Tuple3.of(
 			value, // actual value
 			ts,    // actual timestamp
-			false  // has been joined
+			hasBeenJoined  // has been joined
 		);
 
 		List<Tuple3<T, Long, Boolean>> elemsInBucket = buffer.get(bucket);
@@ -382,10 +386,51 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 
 	@Override
 	public void onEventTime(InternalTimer<K, VoidNamespace> timer) throws Exception {
+
+		if (logger.isTraceEnabled()) {
+			logger.trace("onEventTime @ {}", timer.getTimestamp());
+		}
+
 		// remove from both sides all those elements where the timestamp is less than the lower
 		// bound, because they are not considered for joining anymore
-		removeFromBufferUntil(leftBuffer, timer.getTimestamp() + inverseLowerBound);
-		removeFromBufferUntil(rightBuffer, timer.getTimestamp() + lowerBound);
+		// removeFromBufferUntil(leftBuffer, timer.getTimestamp() + inverseLowerBound);
+		// removeFromBufferUntil(rightBuffer, timer.getTimestamp() + lowerBound);
+		long leftBufferKey = timer.getTimestamp() + inverseLowerBound;
+		long rightBufferKey = timer.getTimestamp() + lowerBound;
+
+		if (logger.isTraceEnabled()) {
+			logger.trace("Removing from left buffer @ {}", leftBufferKey);
+			logger.trace("Removing from right buffer @ {}", rightBufferKey);
+		}
+
+		boolean emitUnjoinedLeft = joinType == LEFT_OUTER || joinType == FULL_OUTER;
+		boolean emitUnjoinedRight = joinType == RIGHT_OUTER || joinType == FULL_OUTER;
+
+		removeFromBufferAt(leftBuffer, timer.getTimestamp() + inverseLowerBound, emitUnjoinedLeft, true);
+		removeFromBufferAt(rightBuffer, timer.getTimestamp() + lowerBound, emitUnjoinedRight, false);
+	}
+
+	private <T> void removeFromBufferAt(
+		MapState<Long, List<Tuple3<T, Long, Boolean>>> buffer,
+		long bucket,
+		boolean emitUnjoinedElements,
+		boolean isLeft
+	) throws Exception {
+
+		List<Tuple3<T, Long, Boolean>> elements = buffer.get(bucket);
+		buffer.remove(bucket);
+
+		if (emitUnjoinedElements) {
+			for (Tuple3<T, Long, Boolean> element : elements) {
+				if (!element.f2) {
+					if (isLeft) {
+						collect((T1) element.f0, null, element.f1, null);
+					} else {
+						collect(null, (T2) element.f0, null, element.f1);
+					}
+				}
+			}
+		}
 	}
 
 	@Override
