@@ -39,6 +39,7 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
+import org.apache.flink.streaming.api.functions.TimeBoundedJoinFunction;
 import org.apache.flink.streaming.api.functions.aggregation.AggregationFunction;
 import org.apache.flink.streaming.api.functions.aggregation.ComparableAggregator;
 import org.apache.flink.streaming.api.functions.aggregation.SumAggregator;
@@ -46,11 +47,7 @@ import org.apache.flink.streaming.api.functions.query.QueryableAppendingStateOpe
 import org.apache.flink.streaming.api.functions.query.QueryableValueStateOperator;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.graph.StreamGraphGenerator;
-import org.apache.flink.streaming.api.operators.KeyedProcessOperator;
-import org.apache.flink.streaming.api.operators.LegacyKeyedProcessOperator;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.api.operators.StreamGroupedFold;
-import org.apache.flink.streaming.api.operators.StreamGroupedReduce;
+import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
 import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
@@ -70,11 +67,14 @@ import org.apache.flink.streaming.runtime.partitioner.KeyGroupStreamPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.flink.util.Preconditions;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Stack;
 import java.util.UUID;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A {@link KeyedStream} represents a {@link DataStream} on which operator state is
@@ -393,6 +393,170 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 
 		KeyedProcessOperator<KEY, T, R> operator = new KeyedProcessOperator<>(clean(keyedProcessFunction));
 		return transform("KeyedProcess", outputType, operator);
+	}
+
+	// ------------------------------------------------------------------------
+	//  Joining
+	// ------------------------------------------------------------------------
+	public <T1> IntervalJoin<T, T1> intervalJoin(KeyedStream<T1, KEY> otherStream) {
+		return new IntervalJoin<>(this, otherStream);
+	}
+
+	public class IntervalJoin<T1, T2> {
+
+		private final KeyedStream<T1, KEY> streamOne;
+		private final KeyedStream<T2, KEY> streamTwo;
+
+		IntervalJoin(
+			KeyedStream<T1, KEY> streamOne,
+			KeyedStream<T2, KEY> streamTwo
+		) {
+
+			this.streamOne = streamOne;
+			this.streamTwo = streamTwo;
+		}
+
+		/**
+		 * Specifies the time boundaries over which the join operation works, so that
+		 * <pre>leftElement.timestamp + lowerBound <= rightElement.timestamp <= leftElement.timestamp + upperBound</pre>
+		 * By default both the lower and the upper bound are inclusive. This can be configured
+		 * with {@link TimeBounded#lowerBoundExclusive(boolean)} and
+		 * {@link TimeBounded#upperBoundExclusive(boolean)}
+		 *
+		 * @param lowerBound The lower bound. Needs to be smaller than or equal to the upperBound
+		 * @param upperBound The upper bound. Needs to be bigger than or equal to the lowerBound
+		 */
+		public TimeBounded<T1, T2, KEY> between(Time lowerBound, Time upperBound) {
+
+			TimeCharacteristic timeCharacteristic =
+				streamOne.getExecutionEnvironment().getStreamTimeCharacteristic();
+
+			if (timeCharacteristic != TimeCharacteristic.EventTime) {
+				throw new UnsupportedTimeCharacteristicException("Time-bounded stream joins are only supported in event time");
+			}
+
+			checkNotNull(lowerBound, "A lower bound needs to be provided for a time-bounded join");
+			checkNotNull(upperBound, "An upper bound needs to be provided for a time-bounded join");
+			return new TimeBounded<>(
+				streamOne,
+				streamTwo,
+				lowerBound.toMilliseconds(),
+				upperBound.toMilliseconds(),
+				true,
+				true,
+				streamOne.keySelector,
+				streamTwo.keySelector
+			);
+		}
+	}
+
+	/**
+	 * Joined streams that have keys for both sides as well as the time boundaries over which
+	 * elements should be joined defined.
+	 *
+	 * @param <IN1> Input type of elements from the first stream
+	 * @param <IN2> Input type of elements from the second stream
+	 * @param <KEY> The type of the key
+	 */
+	public static class TimeBounded<IN1, IN2, KEY> {
+
+		private static final String TIMEBOUNDED_JOIN_FUNC_NAME = "TimeBoundedJoin";
+
+		private final DataStream<IN1> left;
+		private final DataStream<IN2> right;
+
+		private final long lowerBound;
+		private final long upperBound;
+
+		private final KeySelector<IN1, KEY> keySelector1;
+		private final KeySelector<IN2, KEY> keySelector2;
+
+		private boolean lowerBoundInclusive;
+		private boolean upperBoundInclusive;
+
+		public TimeBounded(
+			DataStream<IN1> left,
+			DataStream<IN2> right,
+			long lowerBound,
+			long upperBound,
+			boolean lowerBoundInclusive,
+			boolean upperBoundInclusive,
+			KeySelector<IN1, KEY> keySelector1,
+			KeySelector<IN2, KEY> keySelector2) {
+
+			this.left = Preconditions.checkNotNull(left);
+			this.right = Preconditions.checkNotNull(right);
+
+			this.lowerBound = lowerBound;
+			this.upperBound = upperBound;
+
+			this.lowerBoundInclusive = lowerBoundInclusive;
+			this.upperBoundInclusive = upperBoundInclusive;
+
+			this.keySelector1 = Preconditions.checkNotNull(keySelector1);
+			this.keySelector2 = Preconditions.checkNotNull(keySelector2);
+		}
+
+		/**
+		 * Configure whether the upper bound should be considered exclusive or inclusive.
+		 */
+		public TimeBounded<IN1, IN2, KEY> upperBoundExclusive(boolean exclusive) {
+			this.upperBoundInclusive = !exclusive;
+			return this;
+		}
+
+		/**
+		 * Configure whether the lower bound should be considered exclusive or inclusive.
+		 */
+		public TimeBounded<IN1, IN2, KEY> lowerBoundExclusive(boolean exclusive) {
+			this.lowerBoundInclusive = !exclusive;
+			return this;
+		}
+
+		/**
+		 * Completes the join operation with the user function that is executed for each joined pair
+		 * of elements.
+		 * @param udf The user-defined function
+		 * @param <OUT> The output type
+		 * @return Returns a DataStream
+		 */
+		public <OUT> DataStream<OUT> process(TimeBoundedJoinFunction<IN1, IN2, OUT> udf) {
+
+			ConnectedStreams<IN1, IN2> connected = left.connect(right);
+
+			udf = left.getExecutionEnvironment().clean(udf);
+
+			TypeInformation<OUT> resultType = TypeExtractor.getBinaryOperatorReturnType(
+				udf,
+				TimeBoundedJoinFunction.class,    // TimeBoundedJoinFunction<IN1, IN2, OUT>
+				0,                                //						  0    1    2
+				1,
+				2,
+				new int[]{0},                   // lambda input 1 type arg indices
+				new int[]{1},                   // lambda input 1 type arg indices
+				TypeExtractor.NO_INDEX,         // output arg indices
+				left.getType(),                 // input 1 type information
+				right.getType(),                // input 1 type information
+				TIMEBOUNDED_JOIN_FUNC_NAME,
+				false
+			);
+
+			TimeBoundedStreamJoinOperator<KEY, IN1, IN2, OUT> operator =
+				new TimeBoundedStreamJoinOperator<>(
+					lowerBound,
+					upperBound,
+					lowerBoundInclusive,
+					upperBoundInclusive,
+					left.getType().createSerializer(left.getExecutionConfig()),
+					right.getType().createSerializer(right.getExecutionConfig()),
+					udf
+				);
+
+			return connected
+				.keyBy(keySelector1, keySelector2)
+				.transform(TIMEBOUNDED_JOIN_FUNC_NAME, resultType, operator);
+
+		}
 	}
 
 	// ------------------------------------------------------------------------

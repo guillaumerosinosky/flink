@@ -21,6 +21,7 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.TimeBoundedJoinFunction;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
@@ -59,28 +60,30 @@ public class TimeboundedJoinITCase {
 		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 		env.setParallelism(1);
 
-		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
+		KeyedStream<Tuple2<String, Integer>, String> streamOne = env.fromElements(
 			Tuple2.of("key", 0),
 			Tuple2.of("key", 1),
 			Tuple2.of("key", 2),
 			Tuple2.of("key", 3),
 			Tuple2.of("key", 4),
 			Tuple2.of("key", 5)
-		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+		)
+			.assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor())
+			.keyBy(new Tuple2KeyExtractor());
 
-		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
+		KeyedStream<Tuple2<String, Integer>, String> streamTwo = env.fromElements(
 			Tuple2.of("key", 0),
 			Tuple2.of("key", 1),
 			Tuple2.of("key", 2),
 			Tuple2.of("key", 3),
 			Tuple2.of("key", 4),
 			Tuple2.of("key", 5)
-		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+		)
+			.assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor())
+			.keyBy(new Tuple2KeyExtractor());
 
 		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo)
 			.between(Time.milliseconds(0), Time.milliseconds(0))
 			.process(new TimeBoundedJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
 				@Override
@@ -109,28 +112,30 @@ public class TimeboundedJoinITCase {
 		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 		env.setParallelism(1);
 
-		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
+		KeyedStream<Tuple2<String, Integer>, String> streamOne = env.fromElements(
 			Tuple2.of("key1", 0),
 			Tuple2.of("key2", 1),
 			Tuple2.of("key1", 2),
 			Tuple2.of("key2", 3),
 			Tuple2.of("key1", 4),
 			Tuple2.of("key2", 5)
-		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+		)
+			.assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor())
+			.keyBy(new Tuple2KeyExtractor());
 
-		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
+		KeyedStream<Tuple2<String, Integer>, String> streamTwo = env.fromElements(
 			Tuple2.of("key1", 0),
 			Tuple2.of("key2", 1),
 			Tuple2.of("key1", 2),
 			Tuple2.of("key2", 3),
 			Tuple2.of("key1", 4),
 			Tuple2.of("key2", 5)
-		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+		)
+			.assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor())
+			.keyBy(new Tuple2KeyExtractor());
 
 		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo)
 			// if it were not keyed then the boundaries [0; 1] would lead to the pairs (1, 1),
 			// (1, 2), (2, 2), (2, 3)..., so that this is not happening is what we are testing here
 			.between(Time.milliseconds(0), Time.milliseconds(1))
@@ -199,9 +204,8 @@ public class TimeboundedJoinITCase {
 		});
 
 		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+			.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(-1), Time.milliseconds(1))
 			.process(new CombineToStringJoinFunction())
 			.addSink(new ResultSink());
@@ -255,9 +259,8 @@ public class TimeboundedJoinITCase {
 		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(Tuple2.of("1", 1));
 
 		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+			.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(0), null);
 	}
 
@@ -271,9 +274,8 @@ public class TimeboundedJoinITCase {
 		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(Tuple2.of("1", 1));
 
 		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+			.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(null, Time.milliseconds(1));
 	}
 
@@ -295,10 +297,8 @@ public class TimeboundedJoinITCase {
 			Tuple2.of("key", 2)
 		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
 
-		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(0), Time.milliseconds(2))
 			.upperBoundExclusive(true)
 			.lowerBoundExclusive(true)
@@ -331,10 +331,8 @@ public class TimeboundedJoinITCase {
 			Tuple2.of("key", 2)
 		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
 
-		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(0), Time.milliseconds(2))
 			.upperBoundExclusive(false)
 			.lowerBoundExclusive(false)
@@ -373,10 +371,8 @@ public class TimeboundedJoinITCase {
 			Tuple2.of("key", 2)
 		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
 
-		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(0), Time.milliseconds(2))
 			.process(new CombineToStringJoinFunction())
 			.addSink(new ResultSink());
@@ -404,10 +400,8 @@ public class TimeboundedJoinITCase {
 		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(Tuple2.of("1", 1));
 		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(Tuple2.of("1", 1));
 
-		streamOne
-			.join(streamTwo)
-			.where(new Tuple2KeyExtractor())
-			.equalTo(new Tuple2KeyExtractor())
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(0), Time.milliseconds(0))
 			.process(new TimeBoundedJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
 				@Override
