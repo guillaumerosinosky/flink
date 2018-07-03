@@ -27,13 +27,10 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.api.common.typeutils.base.*;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.api.java.typeutils.runtime.PojoSerializer;
-import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.state.StateInitializationContext;
-import org.apache.flink.streaming.api.functions.TimeBoundedJoinFunction;
+import org.apache.flink.streaming.api.functions.IntervalJoinFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.OutputTag;
@@ -54,13 +51,13 @@ import java.util.Objects;
  * (T1, T2) where t2.ts ∈ [T1.ts + lowerBound, T1.ts + upperBound]. Both the lower and the
  * upper bound can be configured to be either inclusive or exclusive.
  *
- * <p>As soon as elements are joined they are passed to a user-defined {@link TimeBoundedJoinFunction},
+ * <p>As soon as elements are joined they are passed to a user-defined {@link IntervalJoinFunction},
  * as a {@link Tuple2}, with f0 being the left element and f1 being the right element
  *
  * <p>The basic idea of this implementation is as follows: Whenever we receive an element at
  * {@link #processElement1(StreamRecord)} (a.k.a. the left side), we add it to the left buffer.
  * We then check the right buffer to see whether there are any elements that can be joined. If
- * there are, they are joined and passed to a user-defined {@link TimeBoundedJoinFunction}.
+ * there are, they are joined and passed to a user-defined {@link IntervalJoinFunction}.
  * The same happens the other way around when receiving an element on the right side.
  *
  * <p>In some cases the watermark needs to be delayed. This for example can happen if
@@ -80,8 +77,8 @@ import java.util.Objects;
  * @param <OUT> The output type created by the user-defined function
  */
 @Internal
-public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
-	extends AbstractUdfStreamOperator<OUT, TimeBoundedJoinFunction<T1, T2, OUT>>
+public class IntervalJoinOperator<K, T1, T2, OUT>
+	extends AbstractUdfStreamOperator<OUT, IntervalJoinFunction<T1, T2, OUT>>
 	implements TwoInputStreamOperator<T1, T2, OUT>, Triggerable<K, String> {
 
 	private static final String LEFT_BUFFER = "LEFT_BUFFER";
@@ -103,10 +100,10 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	private transient ContextImpl context;
 
 	private transient InternalTimerService<String> internalTimerService;
-	private Logger logger = LoggerFactory.getLogger(TimeBoundedStreamJoinOperator.class);
+	private Logger logger = LoggerFactory.getLogger(IntervalJoinOperator.class);
 
 	/**
-	 * Creates a new TimeBoundedStreamJoinOperator.
+	 * Creates a new IntervalJoinOperator.
 	 *
 	 * @param lowerBound          The lower bound for evaluating if elements should be joined
 	 * @param upperBound          The upper bound for evaluating if elements should be joined
@@ -114,17 +111,17 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 	 *                            the lower bound
 	 * @param upperBoundInclusive Whether or not to include elements where the timestamp matches
 	 *                            the upper bound
-	 * @param udf                 A user-defined {@link TimeBoundedJoinFunction} that gets called
+	 * @param udf                 A user-defined {@link IntervalJoinFunction} that gets called
 	 *                            whenever two elements of T1 and T2 are joined
 	 */
-	public TimeBoundedStreamJoinOperator(
+	public IntervalJoinOperator(
 			long lowerBound,
 			long upperBound,
 			boolean lowerBoundInclusive,
 			boolean upperBoundInclusive,
 			TypeSerializer<T1> leftTypeSerializer,
 			TypeSerializer<T2> rightTypeSerializer,
-			TimeBoundedJoinFunction<T1, T2, OUT> udf) {
+			IntervalJoinFunction<T1, T2, OUT> udf) {
 
 		super(Preconditions.checkNotNull(udf));
 
@@ -351,12 +348,12 @@ public class TimeBoundedStreamJoinOperator<K, T1, T2, OUT>
 		throw new RuntimeException("Processing time is not supported for time-bounded joins");
 	}
 
-	private class ContextImpl extends TimeBoundedJoinFunction<T1, T2, OUT>.Context {
+	private class ContextImpl extends IntervalJoinFunction<T1, T2, OUT>.Context {
 
 		private long leftTs;
 		private long rightTs;
 
-		private ContextImpl(TimeBoundedJoinFunction<T1, T2, OUT> func) {
+		private ContextImpl(IntervalJoinFunction<T1, T2, OUT> func) {
 			func.super();
 		}
 

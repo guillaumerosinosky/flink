@@ -23,7 +23,7 @@ import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.TimeBoundedJoinFunction;
+import org.apache.flink.streaming.api.functions.IntervalJoinFunction;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
@@ -42,9 +42,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Integration tests for time-bounded stream joins.
+ * Integration tests for interval joins.
  */
-public class TimeboundedJoinITCase {
+public class IntervalJoinITCase {
 
 	private static List<String> testResults;
 
@@ -85,7 +85,7 @@ public class TimeboundedJoinITCase {
 		streamOne
 			.intervalJoin(streamTwo)
 			.between(Time.milliseconds(0), Time.milliseconds(0))
-			.process(new TimeBoundedJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
+			.process(new IntervalJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
 				@Override
 				public void processElement(Tuple2<String, Integer> left,
 					Tuple2<String, Integer> right, Context ctx,
@@ -403,7 +403,7 @@ public class TimeboundedJoinITCase {
 		streamOne.keyBy(new Tuple2KeyExtractor())
 			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
 			.between(Time.milliseconds(0), Time.milliseconds(0))
-			.process(new TimeBoundedJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
+			.process(new IntervalJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
 				@Override
 				public void processElement(Tuple2<String, Integer> left,
 					Tuple2<String, Integer> right, Context ctx,
@@ -434,7 +434,7 @@ public class TimeboundedJoinITCase {
 		}
 	}
 
-	private static class CombineToStringJoinFunction extends TimeBoundedJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String> {
+	private static class CombineToStringJoinFunction extends IntervalJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String> {
 		@Override
 		public void processElement(Tuple2<String, Integer> left,
 			Tuple2<String, Integer> right, Context ctx, Collector<String> out) {

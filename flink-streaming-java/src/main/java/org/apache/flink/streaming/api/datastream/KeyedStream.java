@@ -39,7 +39,7 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
-import org.apache.flink.streaming.api.functions.TimeBoundedJoinFunction;
+import org.apache.flink.streaming.api.functions.IntervalJoinFunction;
 import org.apache.flink.streaming.api.functions.aggregation.AggregationFunction;
 import org.apache.flink.streaming.api.functions.aggregation.ComparableAggregator;
 import org.apache.flink.streaming.api.functions.aggregation.SumAggregator;
@@ -420,13 +420,13 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 		 * Specifies the time boundaries over which the join operation works, so that
 		 * <pre>leftElement.timestamp + lowerBound <= rightElement.timestamp <= leftElement.timestamp + upperBound</pre>
 		 * By default both the lower and the upper bound are inclusive. This can be configured
-		 * with {@link TimeBounded#lowerBoundExclusive(boolean)} and
-		 * {@link TimeBounded#upperBoundExclusive(boolean)}
+		 * with {@link IntervalJoined#lowerBoundExclusive(boolean)} and
+		 * {@link IntervalJoined#upperBoundExclusive(boolean)}
 		 *
 		 * @param lowerBound The lower bound. Needs to be smaller than or equal to the upperBound
 		 * @param upperBound The upper bound. Needs to be bigger than or equal to the lowerBound
 		 */
-		public TimeBounded<T1, T2, KEY> between(Time lowerBound, Time upperBound) {
+		public IntervalJoined<T1, T2, KEY> between(Time lowerBound, Time upperBound) {
 
 			TimeCharacteristic timeCharacteristic =
 				streamOne.getExecutionEnvironment().getStreamTimeCharacteristic();
@@ -437,7 +437,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 
 			checkNotNull(lowerBound, "A lower bound needs to be provided for a time-bounded join");
 			checkNotNull(upperBound, "An upper bound needs to be provided for a time-bounded join");
-			return new TimeBounded<>(
+			return new IntervalJoined<>(
 				streamOne,
 				streamTwo,
 				lowerBound.toMilliseconds(),
@@ -458,9 +458,9 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 	 * @param <IN2> Input type of elements from the second stream
 	 * @param <KEY> The type of the key
 	 */
-	public static class TimeBounded<IN1, IN2, KEY> {
+	public static class IntervalJoined<IN1, IN2, KEY> {
 
-		private static final String TIMEBOUNDED_JOIN_FUNC_NAME = "TimeBoundedJoin";
+		private static final String INTERVAL_JOIN_FUNC_NAME = "IntervalJoin";
 
 		private final DataStream<IN1> left;
 		private final DataStream<IN2> right;
@@ -474,7 +474,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 		private boolean lowerBoundInclusive;
 		private boolean upperBoundInclusive;
 
-		public TimeBounded(
+		IntervalJoined(
 			DataStream<IN1> left,
 			DataStream<IN2> right,
 			long lowerBound,
@@ -500,7 +500,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 		/**
 		 * Configure whether the upper bound should be considered exclusive or inclusive.
 		 */
-		public TimeBounded<IN1, IN2, KEY> upperBoundExclusive(boolean exclusive) {
+		public IntervalJoined<IN1, IN2, KEY> upperBoundExclusive(boolean exclusive) {
 			this.upperBoundInclusive = !exclusive;
 			return this;
 		}
@@ -508,7 +508,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 		/**
 		 * Configure whether the lower bound should be considered exclusive or inclusive.
 		 */
-		public TimeBounded<IN1, IN2, KEY> lowerBoundExclusive(boolean exclusive) {
+		public IntervalJoined<IN1, IN2, KEY> lowerBoundExclusive(boolean exclusive) {
 			this.lowerBoundInclusive = !exclusive;
 			return this;
 		}
@@ -520,7 +520,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 		 * @param <OUT> The output type
 		 * @return Returns a DataStream
 		 */
-		public <OUT> DataStream<OUT> process(TimeBoundedJoinFunction<IN1, IN2, OUT> udf) {
+		public <OUT> DataStream<OUT> process(IntervalJoinFunction<IN1, IN2, OUT> udf) {
 
 			ConnectedStreams<IN1, IN2> connected = left.connect(right);
 
@@ -528,7 +528,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 
 			TypeInformation<OUT> resultType = TypeExtractor.getBinaryOperatorReturnType(
 				udf,
-				TimeBoundedJoinFunction.class,    // TimeBoundedJoinFunction<IN1, IN2, OUT>
+				IntervalJoinFunction.class,    // IntervalJoinFunction<IN1, IN2, OUT>
 				0,                                //						  0    1    2
 				1,
 				2,
@@ -537,12 +537,12 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 				TypeExtractor.NO_INDEX,         // output arg indices
 				left.getType(),                 // input 1 type information
 				right.getType(),                // input 1 type information
-				TIMEBOUNDED_JOIN_FUNC_NAME,
+				INTERVAL_JOIN_FUNC_NAME ,
 				false
 			);
 
-			TimeBoundedStreamJoinOperator<KEY, IN1, IN2, OUT> operator =
-				new TimeBoundedStreamJoinOperator<>(
+			IntervalJoinOperator<KEY, IN1, IN2, OUT> operator =
+				new IntervalJoinOperator<>(
 					lowerBound,
 					upperBound,
 					lowerBoundInclusive,
@@ -554,7 +554,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 
 			return connected
 				.keyBy(keySelector1, keySelector2)
-				.transform(TIMEBOUNDED_JOIN_FUNC_NAME, resultType, operator);
+				.transform(INTERVAL_JOIN_FUNC_NAME , resultType, operator);
 
 		}
 	}

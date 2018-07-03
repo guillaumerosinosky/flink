@@ -35,7 +35,7 @@ import org.apache.flink.util.OutputTag;
  * @param <OUT> Type of the output
  */
 @PublicEvolving
-public abstract class TimeBoundedJoinFunction<IN1, IN2, OUT> extends AbstractRichFunction {
+public abstract class IntervalJoinFunction<IN1, IN2, OUT> extends AbstractRichFunction {
 
 	/**
 	 * This method is called for each joined pair of elements.
