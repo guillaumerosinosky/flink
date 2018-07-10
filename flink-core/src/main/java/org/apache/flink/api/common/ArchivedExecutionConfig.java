@@ -21,7 +21,6 @@ package org.apache.flink.api.common;
 import org.apache.flink.annotation.Internal;
 
 import java.io.Serializable;
-import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -49,12 +48,7 @@ public class ArchivedExecutionConfig implements Serializable {
 		}
 		parallelism = ec.getParallelism();
 		objectReuseEnabled = ec.isObjectReuseEnabled();
-		if (ec.getGlobalJobParameters() != null
-				&& ec.getGlobalJobParameters().toMap() != null) {
-			globalJobParameters = ec.getGlobalJobParameters().toMap();
-		} else {
-			globalJobParameters = Collections.emptyMap();
-		}
+		globalJobParameters = ec.getGlobalJobParameters().toMap();
 	}
 
 	public ArchivedExecutionConfig(

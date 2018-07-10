@@ -57,10 +57,6 @@ class FunctionContext(context: RuntimeContext) {
     */
   def getJobParameter(key: String, defaultValue: String): String = {
     val conf = context.getExecutionConfig.getGlobalJobParameters
-    if (conf != null && conf.toMap.containsKey(key)) {
-      conf.toMap.get(key)
-    } else {
-      defaultValue
-    }
+    conf.toMap.getOrDefault(key, defaultValue)
   }
 }

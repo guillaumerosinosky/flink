@@ -69,8 +69,10 @@ public class SpoutWrapperTest extends AbstractTest {
 		flinkConfig.setInteger("testKey", this.r.nextInt());
 
 		final ExecutionConfig taskConfig = mock(ExecutionConfig.class);
-		when(taskConfig.getGlobalJobParameters()).thenReturn(null).thenReturn(stormConfig)
-				.thenReturn(flinkConfig);
+		when(taskConfig.getGlobalJobParameters())
+			.thenReturn(new ExecutionConfig.GlobalJobParameters())
+			.thenReturn(stormConfig)
+			.thenReturn(flinkConfig);
 
 		final StreamingRuntimeContext taskContext = mock(StreamingRuntimeContext.class);
 		when(taskContext.getExecutionConfig()).thenReturn(taskConfig);

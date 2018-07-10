@@ -261,12 +261,10 @@ public class BoltWrapper<IN, OUT> extends AbstractStreamOperator<OUT> implements
 		GlobalJobParameters config = getExecutionConfig().getGlobalJobParameters();
 		StormConfig stormConfig = new StormConfig();
 
-		if (config != null) {
-			if (config instanceof StormConfig) {
-				stormConfig = (StormConfig) config;
-			} else {
-				stormConfig.putAll(config.toMap());
-			}
+		if (config instanceof StormConfig) {
+			stormConfig = (StormConfig) config;
+		} else {
+			stormConfig.putAll(config.toMap());
 		}
 
 		this.topologyContext = WrapperSetupHelper.createTopologyContext(

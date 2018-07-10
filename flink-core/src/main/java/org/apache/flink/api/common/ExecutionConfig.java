@@ -675,7 +675,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	}
 
 	public GlobalJobParameters getGlobalJobParameters() {
-		return globalJobParameters;
+		return (globalJobParameters == null) ? new GlobalJobParameters() : globalJobParameters;
 	}
 
 	/**
@@ -968,7 +968,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	}
 
 	/**
-	 * Abstract class for a custom user configuration object registered at the execution config.
+	 * Base class for a custom user configuration object registered at the execution config.
 	 *
 	 * This user config is accessible at runtime through
 	 * getRuntimeContext().getExecutionConfig().GlobalJobParameters()

@@ -245,12 +245,10 @@ public final class SpoutWrapper<OUT> extends RichParallelSourceFunction<OUT> imp
 				.getGlobalJobParameters();
 		StormConfig stormConfig = new StormConfig();
 
-		if (config != null) {
-			if (config instanceof StormConfig) {
-				stormConfig = (StormConfig) config;
-			} else {
-				stormConfig.putAll(config.toMap());
-			}
+		if (config instanceof StormConfig) {
+			stormConfig = (StormConfig) config;
+		} else {
+			stormConfig.putAll(config.toMap());
 		}
 
 		final TopologyContext stormTopologyContext = WrapperSetupHelper.createTopologyContext(

@@ -229,8 +229,10 @@ public class BoltWrapperTest extends AbstractTest {
 		final Configuration flinkConfig = new Configuration();
 
 		final ExecutionConfig taskConfig = mock(ExecutionConfig.class);
-		when(taskConfig.getGlobalJobParameters()).thenReturn(null).thenReturn(stormConfig)
-		.thenReturn(flinkConfig);
+		when(taskConfig.getGlobalJobParameters())
+			.thenReturn(new ExecutionConfig.GlobalJobParameters())
+			.thenReturn(stormConfig)
+			.thenReturn(flinkConfig);
 
 		final StreamingRuntimeContext taskContext = mock(StreamingRuntimeContext.class);
 		when(taskContext.getExecutionConfig()).thenReturn(taskConfig);
@@ -244,7 +246,7 @@ public class BoltWrapperTest extends AbstractTest {
 		// (1) open with no configuration
 		{
 			ExecutionConfig execConfig = mock(ExecutionConfig.class);
-			when(execConfig.getGlobalJobParameters()).thenReturn(null);
+			when(execConfig.getGlobalJobParameters()).thenReturn(new ExecutionConfig.GlobalJobParameters());
 
 			final IRichBolt bolt = mock(IRichBolt.class);
 			BoltWrapper<Object, Object> wrapper = new BoltWrapper<Object, Object>(bolt);
@@ -294,8 +296,10 @@ public class BoltWrapperTest extends AbstractTest {
 		final Configuration flinkConfig = new Configuration();
 
 		final ExecutionConfig taskConfig = mock(ExecutionConfig.class);
-		when(taskConfig.getGlobalJobParameters()).thenReturn(null).thenReturn(stormConfig)
-		.thenReturn(flinkConfig);
+		when(taskConfig.getGlobalJobParameters())
+			.thenReturn(new ExecutionConfig.GlobalJobParameters())
+			.thenReturn(stormConfig)
+			.thenReturn(flinkConfig);
 
 		final StreamingRuntimeContext taskContext = mock(StreamingRuntimeContext.class);
 		when(taskContext.getExecutionConfig()).thenReturn(taskConfig);
