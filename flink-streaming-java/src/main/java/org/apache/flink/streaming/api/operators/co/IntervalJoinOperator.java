@@ -43,11 +43,9 @@ import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.util.Collector;
-import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.OutputTag;
-import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,6 +101,8 @@ public class IntervalJoinOperator<K, T1, T2, OUT>
 	private final long lowerBound;
 	private final long upperBound;
 
+	private final IntervalJoinOperator.TimestampStrategy timestampStrategy;
+
 	private final TypeSerializer<T1> leftTypeSerializer;
 	private final TypeSerializer<T2> rightTypeSerializer;
 
@@ -127,23 +127,28 @@ public class IntervalJoinOperator<K, T1, T2, OUT>
 	 *                            whenever two elements of T1 and T2 are joined
 	 */
 	public IntervalJoinOperator(
-			long lowerBound,
-			long upperBound,
-			boolean lowerBoundInclusive,
-			boolean upperBoundInclusive,
-			TypeSerializer<T1> leftTypeSerializer,
-			TypeSerializer<T2> rightTypeSerializer,
-			ProcessJoinFunction<T1, T2, OUT> udf) {
+		long lowerBound,
+		long upperBound,
+		boolean lowerBoundInclusive,
+		boolean upperBoundInclusive,
+		TimestampStrategy timestampStrategy,
+		TypeSerializer<T1> leftTypeSerializer,
+		TypeSerializer<T2> rightTypeSerializer,
+		ProcessJoinFunction<T1, T2, OUT> udf) {
 
 		super(Preconditions.checkNotNull(udf));
 
 		Preconditions.checkArgument(lowerBound <= upperBound,
 			"lowerBound <= upperBound must be fulfilled");
 
+		Preconditions.checkNotNull(timestampStrategy);
+
 		// Move buffer by +1 / -1 depending on inclusiveness in order not needing
 		// to check for inclusiveness later on
 		this.lowerBound = (lowerBoundInclusive) ? lowerBound : lowerBound + 1L;
 		this.upperBound = (upperBoundInclusive) ? upperBound : upperBound - 1L;
+
+		this.timestampStrategy = timestampStrategy;
 
 		this.leftTypeSerializer = Preconditions.checkNotNull(leftTypeSerializer);
 		this.rightTypeSerializer = Preconditions.checkNotNull(rightTypeSerializer);
@@ -252,18 +257,48 @@ public class IntervalJoinOperator<K, T1, T2, OUT>
 		}
 	}
 
+	private long calculateWatermarkDelay() {
+		switch (this.timestampStrategy) {
+			case MIN:
+				return Math.max(upperBound, -lowerBound);
+			case MAX:
+				return 0;
+			case LEFT:
+				return (upperBound < 0) ? 0 : upperBound;
+			case RIGHT:
+				return (lowerBound > 0) ? 0 : -lowerBound;
+			default:
+				throw new FlinkRuntimeException("Unsupported timestamp strategy: " + this.timestampStrategy);
+		}
+	}
+
 	private boolean isLate(long timestamp) {
 		long currentWatermark = internalTimerService.currentWatermark();
 		return currentWatermark != Long.MIN_VALUE && timestamp < currentWatermark;
 	}
 
 	private void collect(T1 left, T2 right, long leftTimestamp, long rightTimestamp) throws Exception {
-		final long resultTimestamp = Math.max(leftTimestamp, rightTimestamp);
+		final long resultTimestamp = calculateResultTimestamp(leftTimestamp, rightTimestamp);
 
 		collector.setAbsoluteTimestamp(resultTimestamp);
 		context.updateTimestamps(leftTimestamp, rightTimestamp, resultTimestamp);
 
 		userFunction.processElement(left, right, context, collector);
+	}
+
+	private long calculateResultTimestamp(long leftTs, long rightTs) {
+		switch (this.timestampStrategy) {
+			case MIN:
+				return Math.min(leftTs, rightTs);
+			case MAX:
+				return Math.max(leftTs, rightTs);
+			case LEFT:
+				return leftTs;
+			case RIGHT:
+				return rightTs;
+			default:
+				throw new FlinkRuntimeException("Unsupported timestamp strategy: " + timestampStrategy);
+		}
 	}
 
 	private static <T> void addToBuffer(
@@ -307,6 +342,17 @@ public class IntervalJoinOperator<K, T1, T2, OUT>
 	@Override
 	public void onProcessingTime(InternalTimer<K, String> timer) throws Exception {
 		// do nothing.
+	}
+
+	@Override
+	public void processWatermark(Watermark mark) throws Exception {
+		if (timeServiceManager != null) {
+			timeServiceManager.advanceWatermark(mark);
+		}
+
+		long delayedTimestamp = mark.getTimestamp() - calculateWatermarkDelay();
+		Watermark delayedWatermark = new Watermark(delayedTimestamp);
+		output.emitWatermark(delayedWatermark);
 	}
 
 	/**
@@ -522,5 +568,9 @@ public class IntervalJoinOperator<K, T1, T2, OUT>
 	@VisibleForTesting
 	MapState<Long, List<BufferEntry<T2>>> getRightBuffer() {
 		return rightBuffer;
+	}
+
+	public enum TimestampStrategy {
+		MIN, MAX, LEFT, RIGHT
 	}
 }

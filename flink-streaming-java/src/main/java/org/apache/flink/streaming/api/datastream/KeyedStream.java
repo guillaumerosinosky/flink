@@ -582,6 +582,7 @@ public class KeyedStream<T, KEY> extends DataStream<T> {
 					upperBound,
 					lowerBoundInclusive,
 					upperBoundInclusive,
+					IntervalJoinOperator.TimestampStrategy.MAX,
 					left.getType().createSerializer(left.getExecutionConfig()),
 					right.getType().createSerializer(right.getExecutionConfig()),
 					cleanedUdf
