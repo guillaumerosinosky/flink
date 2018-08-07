@@ -315,44 +315,6 @@ public class IntervalJoinITCase {
 	}
 
 	@Test
-	public void testBoundsCanBeInclusive() throws Exception {
-		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-		env.setParallelism(1);
-
-		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
-			Tuple2.of("key", 0),
-			Tuple2.of("key", 1),
-			Tuple2.of("key", 2)
-		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
-
-		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
-			Tuple2.of("key", 0),
-			Tuple2.of("key", 1),
-			Tuple2.of("key", 2)
-		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
-
-		streamOne.keyBy(new Tuple2KeyExtractor())
-			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
-			.between(Time.milliseconds(0), Time.milliseconds(2))
-			.process(new CombineToStringJoinFunction())
-			.addSink(new ResultSink());
-
-		env.execute();
-
-		expectInAnyOrder(
-			"(key,0):(key,0)",
-			"(key,0):(key,1)",
-			"(key,0):(key,2)",
-
-			"(key,1):(key,1)",
-			"(key,1):(key,2)",
-
-			"(key,2):(key,2)"
-		);
-	}
-
-	@Test
 	public void testBoundsAreInclusiveByDefault() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
