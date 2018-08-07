@@ -352,6 +352,138 @@ public class IntervalJoinITCase {
 		);
 	}
 
+	@Test
+	public void testUseLeftTimestamp() throws Exception {
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+		env.setParallelism(1);
+
+		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
+			Tuple2.of("key", 0),
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
+			Tuple2.of("key", 0),
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
+			.between(Time.milliseconds(0), Time.milliseconds(2))
+			.assignLeftTimestamp()
+			.process(new ProcessJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
+				@Override
+				public void processElement(Tuple2<String, Integer> left, Tuple2<String, Integer> right, Context ctx, Collector<String> out) throws Exception {
+					Assert.assertEquals(ctx.getTimestamp(), ctx.getLeftTimestamp());
+				}
+			})
+			.addSink(new ResultSink());
+
+		env.execute();
+	}
+
+	@Test
+	public void testUseRightTimestamp() throws Exception {
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+		env.setParallelism(1);
+
+		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2),
+			Tuple2.of("key", 3)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
+			Tuple2.of("key", 2),
+			Tuple2.of("key", 3),
+			Tuple2.of("key", 4)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
+			.between(Time.milliseconds(-2), Time.milliseconds(0))
+			.assignRightTimestamp()
+			.process(new ProcessJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
+				@Override
+				public void processElement(Tuple2<String, Integer> left, Tuple2<String, Integer> right, Context ctx, Collector<String> out) throws Exception {
+					Assert.assertEquals(ctx.getTimestamp(), ctx.getRightTimestamp());
+				}
+			})
+			.addSink(new ResultSink());
+
+		env.execute();
+	}
+
+	@Test
+	public void testUseMaxTimestamp() throws Exception {
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+		env.setParallelism(1);
+
+		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
+			Tuple2.of("key", 0),
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
+			Tuple2.of("key", 0),
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
+			.between(Time.milliseconds(0), Time.milliseconds(2))
+			.assignMaxTimestamp()
+			.process(new ProcessJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
+				@Override
+				public void processElement(Tuple2<String, Integer> left, Tuple2<String, Integer> right, Context ctx, Collector<String> out) throws Exception {
+					Assert.assertEquals(ctx.getTimestamp(), Math.max(ctx.getRightTimestamp(), ctx.getLeftTimestamp()));
+				}
+			})
+			.addSink(new ResultSink());
+
+		env.execute();
+	}
+
+	@Test
+	public void testUseMinTimestamp() throws Exception {
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+		env.setParallelism(1);
+
+		DataStream<Tuple2<String, Integer>> streamOne = env.fromElements(
+			Tuple2.of("key", 0),
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		DataStream<Tuple2<String, Integer>> streamTwo = env.fromElements(
+			Tuple2.of("key", 0),
+			Tuple2.of("key", 1),
+			Tuple2.of("key", 2)
+		).assignTimestampsAndWatermarks(new AscendingTuple2TimestampExtractor());
+
+		streamOne.keyBy(new Tuple2KeyExtractor())
+			.intervalJoin(streamTwo.keyBy(new Tuple2KeyExtractor()))
+			.between(Time.milliseconds(0), Time.milliseconds(2))
+			.assignMinTimestamp()
+			.process(new ProcessJoinFunction<Tuple2<String, Integer>, Tuple2<String, Integer>, String>() {
+				@Override
+				public void processElement(Tuple2<String, Integer> left, Tuple2<String, Integer> right, Context ctx, Collector<String> out) throws Exception {
+					Assert.assertEquals(ctx.getTimestamp(), Math.min(ctx.getRightTimestamp(), ctx.getLeftTimestamp()));
+				}
+			})
+			.addSink(new ResultSink());
+
+		env.execute();
+	}
+
 	@Test(expected = UnsupportedTimeCharacteristicException.class)
 	public void testExecutionFailsInProcessingTime() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
