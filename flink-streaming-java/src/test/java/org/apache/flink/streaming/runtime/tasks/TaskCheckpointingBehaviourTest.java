@@ -216,7 +216,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 				1,
 				11,
 				TestStreamTask.class.getName(),
-				taskConfig);
+				taskConfig, 1);
 
 		TaskKvStateRegistry mockKvRegistry = mock(TaskKvStateRegistry.class);
 		TaskEventDispatcher taskEventDispatcher = new TaskEventDispatcher();

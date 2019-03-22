@@ -137,7 +137,7 @@ public class StreamTaskTerminationTest extends TestLogger {
 			1,
 			1,
 			BlockingStreamTask.class.getName(),
-			taskConfiguration);
+			taskConfiguration, 1);
 
 		final TaskManagerRuntimeInfo taskManagerRuntimeInfo = new TestingTaskManagerRuntimeInfo();
 

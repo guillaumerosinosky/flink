@@ -112,6 +112,8 @@ public class JobVertex implements java.io.Serializable {
 	 * to be included in the JSON plan */
 	private String resultOptimizerProperties;
 
+	private int replicationFactor = 1;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -562,5 +564,13 @@ public class JobVertex implements java.io.Serializable {
 	@Override
 	public String toString() {
 		return this.name + " (" + this.invokableClassName + ')';
+	}
+
+	public int getReplicationFactor() {
+		return this.replicationFactor;
+	}
+
+	public void setReplicationFactor(int replicationFactor) {
+		this.replicationFactor = replicationFactor;
 	}
 }

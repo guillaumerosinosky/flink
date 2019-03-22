@@ -61,6 +61,7 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -93,6 +94,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final int subTaskIndex;
 
+	private final int replicaIndex;
+
 	private final EvictingBoundedList<ArchivedExecution> priorExecutions;
 
 	private final Time timeout;
@@ -112,14 +115,36 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 */
 	@VisibleForTesting
 	ExecutionVertex(
-			ExecutionJobVertex jobVertex,
-			int subTaskIndex,
-			IntermediateResult[] producedDataSets,
-			Time timeout) {
+		ExecutionJobVertex jobVertex,
+		int subTaskIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout
+	) {
+		this(
+			jobVertex,
+			subTaskIndex,
+			0, // default replica index
+			producedDataSets,
+			timeout
+		);
+	}
+
+	/**
+	 * Convenience constructor for tests. Sets various fields to default values.
+	 */
+	@VisibleForTesting
+	ExecutionVertex(
+		ExecutionJobVertex jobVertex,
+		int subTaskIndex,
+		int replicaIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout
+	) {
 
 		this(
 			jobVertex,
 			subTaskIndex,
+			replicaIndex,
 			producedDataSets,
 			timeout,
 			1L,
@@ -140,16 +165,20 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 *            The number of prior Executions (= execution attempts) to keep.
 	 */
 	public ExecutionVertex(
-			ExecutionJobVertex jobVertex,
-			int subTaskIndex,
-			IntermediateResult[] producedDataSets,
-			Time timeout,
-			long initialGlobalModVersion,
-			long createTimestamp,
-			int maxPriorExecutionHistoryLength) {
+		ExecutionJobVertex jobVertex,
+		int subTaskIndex,
+		int replicaIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp,
+		int maxPriorExecutionHistoryLength
+	) {
 
 		this.jobVertex = jobVertex;
 		this.subTaskIndex = subTaskIndex;
+		this.replicaIndex = replicaIndex;
+
 		this.taskNameWithSubtask = String.format("%s (%d/%d)",
 				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
 
@@ -162,7 +191,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			resultPartitions.put(irp.getPartitionId(), irp);
 		}
 
-		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
+		int numInputEdges = jobVertex.getJobVertex().getInputs().size();
+		this.inputEdges = new ExecutionEdge[numInputEdges][];
 
 		this.priorExecutions = new EvictingBoundedList<>(maxPriorExecutionHistoryLength);
 
@@ -222,14 +252,20 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		return this.taskNameWithSubtask;
 	}
 
+	// TODO: Thesis - check invocations of this
+	@Deprecated // this will return the number of execution vertices, parallelism is now a separate concept
 	public int getTotalNumberOfParallelSubtasks() {
-		return this.jobVertex.getParallelism();
+		return this.jobVertex.getParallelism() * jobVertex.getReplicationFactor();
 	}
 
+	// TODO: Thesis - check invocations of this
+	@Deprecated
 	public int getMaxParallelism() {
 		return this.jobVertex.getMaxParallelism();
 	}
 
+	// TODO: Thesis - Rename this to clean up naming
+	@Deprecated
 	@Override
 	public int getParallelSubtaskIndex() {
 		return this.subTaskIndex;
@@ -784,6 +820,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				producedPartitions.add(ResultPartitionDeploymentDescriptor.from(
 						partition,
 						KeyGroupRangeAssignment.UPPER_BOUND_MAX_PARALLELISM,
+						1, // TODO: Thesis - replication factor of 1 is fixed in testing, this might break tests
 						lazyScheduling));
 			} else {
 				Preconditions.checkState(1 == consumers.size(),
@@ -792,7 +829,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				List<ExecutionEdge> consumer = consumers.get(0);
 				ExecutionJobVertex vertex = consumer.get(0).getTarget().getJobVertex();
 				int maxParallelism = vertex.getMaxParallelism();
-				producedPartitions.add(ResultPartitionDeploymentDescriptor.from(partition, maxParallelism, lazyScheduling));
+				int replicationFactor = vertex.getReplicationFactor();
+
+				producedPartitions.add(ResultPartitionDeploymentDescriptor.from(partition, maxParallelism, replicationFactor, lazyScheduling));
 			}
 		}
 
@@ -813,7 +852,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			final IntermediateDataSetID resultId = consumedIntermediateResult.getId();
 			final ResultPartitionType partitionType = consumedIntermediateResult.getResultType();
 
-			consumedPartitions.add(new InputGateDeploymentDescriptor(resultId, partitionType, queueToRequest, partitions));
+			int[] perEdgeUpstreamReplicationFactor = Arrays.stream(edges)
+				.mapToInt(edge -> edge.getSource().getProducer().jobVertex.getReplicationFactor())
+				.toArray();
+
+			consumedPartitions.add(new InputGateDeploymentDescriptor(resultId, partitionType, queueToRequest, perEdgeUpstreamReplicationFactor, partitions));
 		}
 
 		final Either<SerializedValue<JobInformation>, PermanentBlobKey> jobInformationOrBlobKey = getExecutionGraph().getJobInformationOrBlobKey();
@@ -850,7 +893,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			serializedTaskInformation,
 			executionId,
 			targetSlot.getAllocationId(),
-			subTaskIndex,
+			getParallelSubtaskIndex(),
+			getReplicaIndex(),
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,
@@ -870,5 +914,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@Override
 	public ArchivedExecutionVertex archive() {
 		return new ArchivedExecutionVertex(this);
+	}
+
+	public int getReplicaIndex() {
+		return replicaIndex;
 	}
 }

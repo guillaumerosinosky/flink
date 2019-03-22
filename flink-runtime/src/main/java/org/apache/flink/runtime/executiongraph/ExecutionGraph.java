@@ -47,6 +47,7 @@ import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
+import org.apache.flink.runtime.executiongraph.failover.ReplicatedFailoverStrategy;
 import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartCallback;
@@ -826,11 +827,19 @@ public class ExecutionGraph implements AccessExecutionGraph {
 				this.isStoppable = false;
 			}
 
+			// TODO: Marker - This is where we currently set replication factor!
+			if (jobVertex.isInputVertex() || jobVertex.isOutputVertex()) {
+				jobVertex.setReplicationFactor(1);
+			} else {
+				jobVertex.setReplicationFactor(2);
+			}
+
 			// create the execution job vertex and attach it to the graph
 			ExecutionJobVertex ejv = new ExecutionJobVertex(
 				this,
 				jobVertex,
 				1,
+				jobVertex.getReplicationFactor(),
 				rpcTimeout,
 				globalModVersion,
 				createTimestamp);
@@ -1571,6 +1580,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 						return true;
 
 					case FAILED:
+						// TODO: Marker handle failure!
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFailed(state.getError(userClassLoader), accumulators, state.getIOMetrics());
@@ -1768,6 +1778,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {
 			final Throwable ex = error != null ? error : new FlinkException("Unknown Error (missing cause)");
+
+			// TODO: This is unused
 			long timestamp = execution.getStateTimestamp(ExecutionState.FAILED);
 
 			// by filtering out late failure calls, we can save some work in

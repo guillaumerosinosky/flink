@@ -919,7 +919,7 @@ public class StreamTaskTest extends TestLogger {
 			1,
 			1,
 			invokable.getName(),
-			taskConfig.getConfiguration());
+			taskConfig.getConfiguration(), 1);
 
 		return new Task(
 			jobInformation,

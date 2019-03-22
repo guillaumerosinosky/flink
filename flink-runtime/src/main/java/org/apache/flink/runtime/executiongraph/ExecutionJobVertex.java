@@ -123,6 +123,12 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	private final boolean maxParallelismConfigured;
 
+	private final int replicationFactor;
+
+	private final int maxNumExecutionVertices;
+
+	private final int numExecutionVertices;
+
 	private int maxParallelism;
 
 	/**
@@ -153,16 +159,45 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		int defaultParallelism,
 		Time timeout) throws JobException {
 
-		this(graph, jobVertex, defaultParallelism, timeout, 1L, System.currentTimeMillis());
+		this(
+			graph,
+			jobVertex,
+			defaultParallelism,
+			1, // default num replicas
+			timeout,
+			1L, // default initialGlobalModVersion
+			System.currentTimeMillis()
+		);
 	}
 
 	public ExecutionJobVertex(
-			ExecutionGraph graph,
-			JobVertex jobVertex,
-			int defaultParallelism,
-			Time timeout,
-			long initialGlobalModVersion,
-			long createTimestamp) throws JobException {
+		ExecutionGraph graph,
+		JobVertex jobVertex,
+		int defaultParallelism,
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp
+	) throws JobException {
+		this(
+			graph,
+			jobVertex,
+			defaultParallelism,
+			1, // default num replicas
+			timeout,
+			initialGlobalModVersion,
+			createTimestamp
+		);
+	}
+
+	public ExecutionJobVertex(
+		ExecutionGraph graph,
+		JobVertex jobVertex,
+		int defaultParallelism,
+		int replicationFactor,
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp
+	) throws JobException {
 
 		if (graph == null || jobVertex == null) {
 			throw new NullPointerException();
@@ -172,30 +207,45 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		this.jobVertex = jobVertex;
 
 		int vertexParallelism = jobVertex.getParallelism();
-		int numTaskVertices = vertexParallelism > 0 ? vertexParallelism : defaultParallelism;
+
+		// TODO: Thesis - This breaks when having a very high parallelism!
+		this.numExecutionVertices = (vertexParallelism > 0)
+			? (vertexParallelism * replicationFactor)
+			: (defaultParallelism * replicationFactor);
+
+		this.replicationFactor = replicationFactor;
 
 		final int configuredMaxParallelism = jobVertex.getMaxParallelism();
 
 		this.maxParallelismConfigured = (VALUE_NOT_SET != configuredMaxParallelism);
 
+		// TODO: Thesis - the KeyGroupRangeAssigner is not aware of replicas and should not be
 		// if no max parallelism was configured by the user, we calculate and set a default
-		setMaxParallelismInternal(maxParallelismConfigured ?
-				configuredMaxParallelism : KeyGroupRangeAssignment.computeDefaultMaxParallelism(numTaskVertices));
+		int maxParallelismInternal = maxParallelismConfigured
+			? configuredMaxParallelism
+			: KeyGroupRangeAssignment.computeDefaultMaxParallelism(numExecutionVertices);
+
+		setMaxParallelismInternal(maxParallelismInternal);
+
+		// TODO: Verify that this is actually completely correct and doesn't overflow
+		this.maxNumExecutionVertices = this.maxParallelism * replicationFactor;
 
 		// verify that our parallelism is not higher than the maximum parallelism
-		if (numTaskVertices > maxParallelism) {
+		if (numExecutionVertices > this.maxParallelism) {
 			throw new JobException(
 				String.format("Vertex %s's parallelism (%s) is higher than the max parallelism (%s). Please lower the parallelism or increase the max parallelism.",
 					jobVertex.getName(),
-					numTaskVertices,
-					maxParallelism));
+					numExecutionVertices,
+					this.maxParallelism));
 		}
 
-		this.parallelism = numTaskVertices;
+		this.parallelism = numExecutionVertices;
 
 		this.serializedTaskInformation = null;
 
-		this.taskVertices = new ExecutionVertex[numTaskVertices];
+		// TODO: This needs to be dynamic
+		this.taskVertices = new ExecutionVertex[numExecutionVertices];
+
 		this.operatorIDs = Collections.unmodifiableList(jobVertex.getOperatorIDs());
 		this.userDefinedOperatorIds = Collections.unmodifiableList(jobVertex.getUserDefinedOperatorIDs());
 
@@ -219,8 +269,9 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			this.producedDataSets[i] = new IntermediateResult(
 					result.getId(),
 					this,
-					numTaskVertices,
-					result.getResultType());
+				numExecutionVertices,
+				result.getResultType()
+			);
 		}
 
 		Configuration jobConfiguration = graph.getJobConfiguration();
@@ -229,22 +280,26 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 				JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE.defaultValue();
 
 		// create all task vertices
-		for (int i = 0; i < numTaskVertices; i++) {
+		for (int subtaskIndex = 0; subtaskIndex < numExecutionVertices; subtaskIndex++) {
+			int replicaIndex = subtaskIndex % replicationFactor;
+
 			ExecutionVertex vertex = new ExecutionVertex(
 					this,
-					i,
+				subtaskIndex,
+				replicaIndex,
 					producedDataSets,
 					timeout,
 					initialGlobalModVersion,
 					createTimestamp,
-					maxPriorAttemptsHistoryLength);
+				maxPriorAttemptsHistoryLength
+			);
 
-			this.taskVertices[i] = vertex;
+			this.taskVertices[subtaskIndex] = vertex;
 		}
 
 		// sanity check for the double referencing between intermediate result partitions and execution vertices
 		for (IntermediateResult ir : this.producedDataSets) {
-			if (ir.getNumberOfAssignedPartitions() != parallelism) {
+			if (ir.getNumberOfAssignedPartitions() != numExecutionVertices) {
 				throw new RuntimeException("The intermediate result's partitions were not correctly assigned.");
 			}
 		}
@@ -259,7 +314,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 				ClassLoader oldContextClassLoader = currentThread.getContextClassLoader();
 				currentThread.setContextClassLoader(graph.getUserClassLoader());
 				try {
-					inputSplits = splitSource.createInputSplits(numTaskVertices);
+					// TODO: Thesis - Input splits will probably break with replication
+					inputSplits = splitSource.createInputSplits(numExecutionVertices);
 
 					if (inputSplits != null) {
 						splitAssigner = splitSource.getInputSplitAssigner(inputSplits);
@@ -330,14 +386,30 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		return getJobVertex().getName();
 	}
 
+	// TODO: Thesis - Verify all accesses to this and whether or not
+	// 	they should get the parallelism or the number of execution vertices
 	@Override
+	@Deprecated
 	public int getParallelism() {
 		return parallelism;
 	}
 
 	@Override
+	@Deprecated
 	public int getMaxParallelism() {
 		return maxParallelism;
+	}
+
+	public int getMaxNumExecutionVertices() {
+		return this.maxNumExecutionVertices;
+	}
+
+	public int getNumberOfExecutionVertices() {
+		return this.numExecutionVertices;
+	}
+
+	public int getReplicationFactor() {
+		return this.replicationFactor;
 	}
 
 	public boolean isMaxParallelismConfigured() {
@@ -385,13 +457,18 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			if (taskInformationOrBlobKey == null) {
 				final BlobWriter blobWriter = graph.getBlobWriter();
 
+				int numberOfSubtasks = getNumberOfExecutionVertices();
+				int maxNumberOfSubtasks = getMaxNumExecutionVertices();
+
 				final TaskInformation taskInformation = new TaskInformation(
 					jobVertex.getID(),
 					jobVertex.getName(),
-					parallelism,
-					maxParallelism,
+					numberOfSubtasks,
+					maxNumberOfSubtasks,
 					jobVertex.getInvokableClassName(),
-					jobVertex.getConfiguration());
+					jobVertex.getConfiguration(),
+					replicationFactor
+				);
 
 				taskInformationOrBlobKey = BlobWriter.serializeAndTryOffload(
 					taskInformation,
@@ -460,9 +537,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 			int consumerIndex = ires.registerConsumer();
 
-			for (int i = 0; i < parallelism; i++) {
-				ExecutionVertex ev = taskVertices[i];
-				ev.connectSource(num, ires, edge, consumerIndex);
+			for (ExecutionVertex vertex : taskVertices) {
+				vertex.connectSource(num, ires, edge, consumerIndex);
 			}
 		}
 	}

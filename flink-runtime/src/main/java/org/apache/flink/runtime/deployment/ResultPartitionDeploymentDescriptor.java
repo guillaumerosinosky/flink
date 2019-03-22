@@ -54,16 +54,39 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 	/** The maximum parallelism. */
 	private final int maxParallelism;
 
+	private final int replicationFactor;
+
 	/** Flag whether the result partition should send scheduleOrUpdateConsumer messages. */
 	private final boolean sendScheduleOrUpdateConsumersMessage;
 
 	public ResultPartitionDeploymentDescriptor(
-			IntermediateDataSetID resultId,
-			IntermediateResultPartitionID partitionId,
-			ResultPartitionType partitionType,
-			int numberOfSubpartitions,
-			int maxParallelism,
-			boolean lazyScheduling) {
+		IntermediateDataSetID resultId,
+		IntermediateResultPartitionID partitionId,
+		ResultPartitionType partitionType,
+		int numberOfSubpartitions,
+		int maxParallelism,
+		boolean sendScheduleOrUpdateConsumersMessage
+	) {
+		this(
+			resultId,
+			partitionId,
+			partitionType,
+			numberOfSubpartitions,
+			1,
+			maxParallelism,
+			sendScheduleOrUpdateConsumersMessage
+		);
+	}
+
+	public ResultPartitionDeploymentDescriptor(
+		IntermediateDataSetID resultId,
+		IntermediateResultPartitionID partitionId,
+		ResultPartitionType partitionType,
+		int numberOfSubpartitions,
+		int replicationFactor,
+		int maxParallelism,
+		boolean lazyScheduling
+	) {
 
 		this.resultId = checkNotNull(resultId);
 		this.partitionId = checkNotNull(partitionId);
@@ -74,6 +97,7 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 		this.numberOfSubpartitions = numberOfSubpartitions;
 		this.maxParallelism = maxParallelism;
 		this.sendScheduleOrUpdateConsumersMessage = lazyScheduling;
+		this.replicationFactor = replicationFactor;
 	}
 
 	public IntermediateDataSetID getResultId() {
@@ -92,6 +116,8 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 		return numberOfSubpartitions;
 	}
 
+	// TODO: Thesis - Rethink if this makes sense
+	@Deprecated
 	public int getMaxParallelism() {
 		return maxParallelism;
 	}
@@ -110,7 +136,11 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 	// ------------------------------------------------------------------------
 
 	public static ResultPartitionDeploymentDescriptor from(
-			IntermediateResultPartition partition, int maxParallelism, boolean lazyScheduling) {
+			IntermediateResultPartition partition,
+			int maxParallelism,
+			int replicationFactor,
+			boolean lazyScheduling
+	) {
 
 		final IntermediateDataSetID resultId = partition.getIntermediateResult().getId();
 		final IntermediateResultPartitionID partitionId = partition.getPartitionId();
@@ -128,10 +158,17 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 				throw new IllegalStateException("Currently, only a single consumer group per partition is supported.");
 			}
 
+			// number of sub-partitions = number of execution edges for this result partition
+			// e.g. if source{parallelism=1} --> map{parallelism=2} then the result partition of the source
+			// has two edges --> two subpartitions
 			numberOfSubpartitions = partition.getConsumers().get(0).size();
 		}
 
 		return new ResultPartitionDeploymentDescriptor(
-				resultId, partitionId, partitionType, numberOfSubpartitions, maxParallelism, lazyScheduling);
+			resultId, partitionId, partitionType, numberOfSubpartitions, replicationFactor, maxParallelism, lazyScheduling);
+	}
+
+	public int getReplicationFactor() {
+		return replicationFactor;
 	}
 }

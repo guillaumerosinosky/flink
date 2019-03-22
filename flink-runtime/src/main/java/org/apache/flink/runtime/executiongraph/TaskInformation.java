@@ -50,19 +50,24 @@ public class TaskInformation implements Serializable {
 	/** Configuration for the task */
 	private final Configuration taskConfiguration;
 
+	private final int replicationFactor;
+
 	public TaskInformation(
-			JobVertexID jobVertexId,
-			String taskName,
-			int numberOfSubtasks,
-			int maxNumberOfSubtaks,
-			String invokableClassName,
-			Configuration taskConfiguration) {
+		JobVertexID jobVertexId,
+		String taskName,
+		int numberOfSubtasks,
+		int maxNumberOfSubtaks,
+		String invokableClassName,
+		Configuration taskConfiguration,
+		int replicationFactor
+	) {
 		this.jobVertexId = Preconditions.checkNotNull(jobVertexId);
 		this.taskName = Preconditions.checkNotNull(taskName);
 		this.numberOfSubtasks = Preconditions.checkNotNull(numberOfSubtasks);
 		this.maxNumberOfSubtaks = Preconditions.checkNotNull(maxNumberOfSubtaks);
 		this.invokableClassName = Preconditions.checkNotNull(invokableClassName);
 		this.taskConfiguration = Preconditions.checkNotNull(taskConfiguration);
+		this.replicationFactor = replicationFactor;
 	}
 
 	public JobVertexID getJobVertexId() {
@@ -87,5 +92,9 @@ public class TaskInformation implements Serializable {
 
 	public Configuration getTaskConfiguration() {
 		return taskConfiguration;
+	}
+
+	public int getReplicationFactor() {
+		return replicationFactor;
 	}
 }

@@ -50,6 +50,8 @@ public class InputGateDeploymentDescriptor implements Serializable {
 	/** The type of the partition the input gate is going to consume. */
 	private final ResultPartitionType consumedPartitionType;
 
+	private int[] perEdgeUpstreamReplicationFactor;
+
 	/**
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
 	 * {@link DistributionPattern} and the subtask indices of the producing and consuming task.
@@ -60,13 +62,31 @@ public class InputGateDeploymentDescriptor implements Serializable {
 	private final InputChannelDeploymentDescriptor[] inputChannels;
 
 	public InputGateDeploymentDescriptor(
-			IntermediateDataSetID consumedResultId,
-			ResultPartitionType consumedPartitionType,
-			int consumedSubpartitionIndex,
-			InputChannelDeploymentDescriptor[] inputChannels) {
+		IntermediateDataSetID consumedResultId,
+		ResultPartitionType consumedPartitionType,
+		int consumedSubpartitionIndex,
+		InputChannelDeploymentDescriptor[] inputChannels
+	) {
+		this(
+			consumedResultId,
+			consumedPartitionType,
+			consumedSubpartitionIndex,
+			// TODO: Thesis - This breaks for anything but one upstream edge!
+			new int[]{1}, // default upstream replication factor
+			inputChannels);
+	}
+
+	public InputGateDeploymentDescriptor(
+		IntermediateDataSetID consumedResultId,
+		ResultPartitionType consumedPartitionType,
+		int consumedSubpartitionIndex,
+		int[] perEdgeUpstreamReplicationFactor,
+		InputChannelDeploymentDescriptor[] inputChannels
+	) {
 
 		this.consumedResultId = checkNotNull(consumedResultId);
 		this.consumedPartitionType = checkNotNull(consumedPartitionType);
+		this.perEdgeUpstreamReplicationFactor = perEdgeUpstreamReplicationFactor;
 
 		checkArgument(consumedSubpartitionIndex >= 0);
 		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
@@ -101,5 +121,13 @@ public class InputGateDeploymentDescriptor implements Serializable {
 						"consumed subpartition index: %d, input channels: %s]",
 				consumedResultId.toString(), consumedSubpartitionIndex,
 				Arrays.toString(inputChannels));
+	}
+
+	public int[] getPerEdgeUpstreamReplicationFactor() {
+		return perEdgeUpstreamReplicationFactor;
+	}
+
+	public void setPerEdgeUpstreamReplicationFactor(int[] perEdgeUpstreamReplicationFactor) {
+		this.perEdgeUpstreamReplicationFactor = perEdgeUpstreamReplicationFactor;
 	}
 }

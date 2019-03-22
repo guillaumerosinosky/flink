@@ -44,6 +44,12 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
 
+	private final int replicaIndex;
+
+	public int getReplicaIndex() {
+		return replicaIndex;
+	}
+
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
 	 * org.apache.flink.runtime.blob.BlobServer} or not.
@@ -157,9 +163,41 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors
+	) {
+		this(
+			jobId,
+			serializedJobInformation,
+			serializedTaskInformation,
+			executionAttemptId,
+			allocationId,
+			subtaskIndex,
+			0,
+			attemptNumber,
+			targetSlotNumber,
+			taskRestore,
+			resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors
+		);
+	}
+
+	public TaskDeploymentDescriptor(
+		JobID jobId,
+		MaybeOffloaded<JobInformation> serializedJobInformation,
+		MaybeOffloaded<TaskInformation> serializedTaskInformation,
+		ExecutionAttemptID executionAttemptId,
+		AllocationID allocationId,
+		int subtaskIndex,
+		int replicaIndex,
+		int attemptNumber,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
+
+		this.replicaIndex = replicaIndex;
 
 		this.serializedJobInformation = Preconditions.checkNotNull(serializedJobInformation);
 		this.serializedTaskInformation = Preconditions.checkNotNull(serializedTaskInformation);

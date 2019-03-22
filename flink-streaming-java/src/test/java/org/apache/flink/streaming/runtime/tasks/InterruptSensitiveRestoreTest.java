@@ -249,7 +249,7 @@ public class InterruptSensitiveRestoreTest {
 			1,
 			1,
 			SourceStreamTask.class.getName(),
-			taskConfig);
+			taskConfig, 1);
 
 		BlobCacheService blobService =
 			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
