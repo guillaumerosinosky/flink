@@ -231,9 +231,10 @@ public class NetworkEnvironment {
 		BufferPool bufferPool = null;
 
 		try {
-			int maxNumberOfMemorySegments = partition.getPartitionType().isBounded() ?
-				partition.getNumberOfSubpartitions() * networkBuffersPerChannel +
-					extraNetworkBuffersPerGate : Integer.MAX_VALUE;
+			int maxNumberOfMemorySegments = partition.getPartitionType().isBounded()
+				? partition.getNumberOfSubpartitions() * networkBuffersPerChannel + extraNetworkBuffersPerGate
+				: Integer.MAX_VALUE;
+
 			// If the partition type is back pressure-free, we register with the buffer pool for
 			// callbacks to release memory.
 			bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions(),

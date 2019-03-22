@@ -29,6 +29,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class TaskInfo {
 
+	// TODO: Thesis - Fix all this to be actually useful information!
+
 	private final String taskName;
 	private final String taskNameWithSubtasks;
 	private final String allocationIDAsString;

@@ -261,6 +261,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 
 		TaskInfo taskInfo = environment.getTaskInfo();
 
+		// TODO: Thesis - Fix this w.r.t. parallelism and stuff!
 		final KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
 			taskInfo.getMaxNumberOfParallelSubtasks(),
 			taskInfo.getNumberOfParallelSubtasks(),

@@ -33,7 +33,9 @@ public class OperatorSubtaskDescriptionText {
 
 		Preconditions.checkArgument(numberOfTasks > 0);
 		Preconditions.checkArgument(subtaskIndex >= 0);
-		Preconditions.checkArgument(subtaskIndex < numberOfTasks);
+
+		// TODO: Fix number of tasks
+		//Preconditions.checkArgument(subtaskIndex < numberOfTasks);
 
 		this.description = operatorClass +
 				"_" + operatorId +

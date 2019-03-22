@@ -96,6 +96,9 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	}
 
 	@Override
+	// TODO: Thesis - The usages of this needs to be checked and adapted
+	//		because this returns the parallelism and not the actual number
+	//		of running subtasks.
 	public int getNumberOfParallelSubtasks() {
 		return taskInfo.getNumberOfParallelSubtasks();
 	}
