@@ -144,27 +144,42 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			// move timestamp
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_WATERMARK) {
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		}
 		else if (tag == TAG_STREAM_STATUS) {
 			target.writeInt(source.readInt());
+			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		}
 		else if (tag == TAG_LATENCY_MARKER) {
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeInt(source.readInt());
+			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
 	}
 
+	/*
+	 * Watermark: 		TAG | LONG | LONG | LONG
+	 * Latency Marker:	TAG | LONG | LONG | LONG | INT | LONG | LONG
+	 * Stream Status:	TAG | INT  | LONG | LONG
+	 */
 	@Override
 	public void serialize(StreamElement value, DataOutputView target) throws IOException {
 		if (value.isRecord()) {
@@ -173,27 +188,33 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			if (record.hasTimestamp()) {
 				target.write(TAG_REC_WITH_TIMESTAMP);
 				target.writeLong(record.getTimestamp());
+				target.writeLong(record.getDeduplicationTimestamp());
+				target.writeLong(record.getSentTimestamp());
 			} else {
 				target.write(TAG_REC_WITHOUT_TIMESTAMP);
+				target.writeLong(record.getDeduplicationTimestamp());
+				target.writeLong(record.getSentTimestamp());
 			}
 			typeSerializer.serialize(record.getValue(), target);
-		}
-		else if (value.isWatermark()) {
+		} else if (value.isWatermark()) {
 			target.write(TAG_WATERMARK);
 			target.writeLong(value.asWatermark().getTimestamp());
-		}
-		else if (value.isStreamStatus()) {
+			target.writeLong(value.getDeduplicationTimestamp());
+			target.writeLong(value.getSentTimestamp());
+		} else if (value.isStreamStatus()) {
 			target.write(TAG_STREAM_STATUS);
 			target.writeInt(value.asStreamStatus().getStatus());
-		}
-		else if (value.isLatencyMarker()) {
+			target.writeLong(value.getDeduplicationTimestamp());
+			target.writeLong(value.getSentTimestamp());
+		} else if (value.isLatencyMarker()) {
 			target.write(TAG_LATENCY_MARKER);
 			target.writeLong(value.asLatencyMarker().getMarkedTime());
 			target.writeLong(value.asLatencyMarker().getOperatorId().getLowerPart());
 			target.writeLong(value.asLatencyMarker().getOperatorId().getUpperPart());
 			target.writeInt(value.asLatencyMarker().getSubtaskIndex());
-		}
-		else {
+			target.writeLong(value.getDeduplicationTimestamp());
+			target.writeLong(value.getSentTimestamp());
+		} else {
 			throw new RuntimeException();
 		}
 	}
@@ -203,21 +224,43 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		int tag = source.readByte();
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			long timestamp = source.readLong();
-			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
-		}
-		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			return new StreamRecord<T>(typeSerializer.deserialize(source));
-		}
-		else if (tag == TAG_WATERMARK) {
-			return new Watermark(source.readLong());
-		}
-		else if (tag == TAG_STREAM_STATUS) {
-			return new StreamStatus(source.readInt());
-		}
-		else if (tag == TAG_LATENCY_MARKER) {
-			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
-		}
-		else {
+			long dedupTimestamp = source.readLong();
+			long sentTimestamp = source.readLong();
+
+			StreamRecord<T> rec = new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
+			rec.setDeduplicationTimestamp(dedupTimestamp);
+			rec.setSentTimestamp(sentTimestamp);
+
+			return rec;
+		} else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+
+			long dedupTimestamp = source.readLong();
+			long sentTimestamp = source.readLong();
+
+			StreamRecord<T> rec = new StreamRecord<T>(typeSerializer.deserialize(source));
+			rec.setDeduplicationTimestamp(dedupTimestamp);
+			rec.setSentTimestamp(sentTimestamp);
+
+			return rec;
+		} else if (tag == TAG_WATERMARK) {
+			long value = source.readLong();
+			long dedupTs = source.readLong();
+			long sentTs = source.readLong();
+			Watermark watermark = new Watermark(value);
+			watermark.setDeduplicationTimestamp(dedupTs);
+			watermark.setSentTimestamp(sentTs);
+			return watermark;
+		} else if (tag == TAG_STREAM_STATUS) {
+			StreamStatus streamStatus = new StreamStatus(source.readInt());
+			streamStatus.setDeduplicationTimestamp(source.readLong());
+			streamStatus.setSentTimestamp(source.readLong());
+			return streamStatus;
+		} else if (tag == TAG_LATENCY_MARKER) {
+			LatencyMarker latencyMarker = new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
+			latencyMarker.setDeduplicationTimestamp(source.readLong());
+			latencyMarker.setSentTimestamp(source.readLong());
+			return latencyMarker;
+		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
 	}
@@ -226,23 +269,42 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 	public StreamElement deserialize(StreamElement reuse, DataInputView source) throws IOException {
 		int tag = source.readByte();
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
+
 			long timestamp = source.readLong();
+			long dedupTimestamp = source.readLong();
+			long sentTimestamp = source.readLong();
+
 			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
 			reuseRecord.replace(value, timestamp);
+			reuseRecord.setDeduplicationTimestamp(dedupTimestamp);
+			reuseRecord.setSentTimestamp(sentTimestamp);
 			return reuseRecord;
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			long dedupTimestamp = source.readLong();
+			long sentTimestamp = source.readLong();
 			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
 			reuseRecord.replace(value);
+			reuseRecord.setDeduplicationTimestamp(dedupTimestamp);
+			reuseRecord.setSentTimestamp(sentTimestamp);
 			return reuseRecord;
 		}
 		else if (tag == TAG_WATERMARK) {
-			return new Watermark(source.readLong());
+			long value = source.readLong();
+			long dedupTs = source.readLong();
+			long sentTs = source.readLong();
+			Watermark watermark = new Watermark(value);
+			watermark.setDeduplicationTimestamp(dedupTs);
+			watermark.setSentTimestamp(sentTs);
+			return watermark;
 		}
 		else if (tag == TAG_LATENCY_MARKER) {
-			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
+			LatencyMarker latencyMarker = new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
+			latencyMarker.setDeduplicationTimestamp(source.readLong());
+			latencyMarker.setSentTimestamp(source.readLong());
+			return latencyMarker;
 		}
 		else {
 			throw new IOException("Corrupt stream, found tag: " + tag);

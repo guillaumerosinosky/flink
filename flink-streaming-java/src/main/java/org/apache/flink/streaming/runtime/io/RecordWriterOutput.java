@@ -45,6 +45,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExposingOutput<StreamRecord<OUT>> {
 
+	private final boolean isSource;
+
 	private StreamRecordWriter<SerializationDelegate<StreamElement>> recordWriter;
 
 	private SerializationDelegate<StreamElement> serializationDelegate;
@@ -55,12 +57,16 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	private final WatermarkGauge watermarkGauge = new WatermarkGauge();
 
+	private int lastDedupTs;
+
 	@SuppressWarnings("unchecked")
 	public RecordWriterOutput(
-			StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
-			TypeSerializer<OUT> outSerializer,
-			OutputTag outputTag,
-			StreamStatusProvider streamStatusProvider) {
+		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
+		TypeSerializer<OUT> outSerializer,
+		OutputTag outputTag,
+		StreamStatusProvider streamStatusProvider,
+		boolean isSource
+	) {
 
 		checkNotNull(recordWriter);
 		this.outputTag = outputTag;
@@ -73,14 +79,16 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 				new StreamElementSerializer<>(outSerializer);
 
 		if (outSerializer != null) {
-			serializationDelegate = new SerializationDelegate<StreamElement>(outRecordSerializer);
+			serializationDelegate = new SerializationDelegate<>(outRecordSerializer);
 		}
 
 		this.streamStatusProvider = checkNotNull(streamStatusProvider);
+		this.isSource = isSource;
 	}
 
 	@Override
 	public void collect(StreamRecord<OUT> record) {
+
 		if (this.outputTag != null) {
 			// we are only responsible for emitting to the main input
 			return;
@@ -91,6 +99,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	@Override
 	public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+
 		if (this.outputTag == null || !this.outputTag.equals(outputTag)) {
 			// we are only responsible for emitting to the side-output specified by our
 			// OutputTag.
@@ -101,6 +110,13 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	private <X> void pushToRecordWriter(StreamRecord<X> record) {
+
+		if (this.isSource) {
+			record.setSentTimestamp(System.currentTimeMillis());
+		}
+
+		record.setDeduplicationTimestamp(++lastDedupTs);
+
 		serializationDelegate.setInstance(record);
 
 		try {
@@ -113,6 +129,12 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	@Override
 	public void emitWatermark(Watermark mark) {
+
+		if (this.isSource) {
+			mark.setSentTimestamp(System.currentTimeMillis());
+		}
+		mark.setDeduplicationTimestamp(++lastDedupTs);
+
 		watermarkGauge.setCurrentWatermark(mark.getTimestamp());
 		serializationDelegate.setInstance(mark);
 
@@ -126,6 +148,12 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	public void emitStreamStatus(StreamStatus streamStatus) {
+
+		if (this.isSource) {
+			streamStatus.setSentTimestamp(System.currentTimeMillis());
+		}
+		streamStatus.setDeduplicationTimestamp(++lastDedupTs);
+
 		serializationDelegate.setInstance(streamStatus);
 
 		try {
@@ -138,6 +166,12 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	@Override
 	public void emitLatencyMarker(LatencyMarker latencyMarker) {
+
+		if (this.isSource) {
+			latencyMarker.setSentTimestamp(System.currentTimeMillis());
+		}
+		latencyMarker.setDeduplicationTimestamp(++lastDedupTs);
+
 		serializationDelegate.setInstance(latencyMarker);
 
 		try {
@@ -149,6 +183,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException {
+
 		recordWriter.broadcastEvent(event);
 	}
 

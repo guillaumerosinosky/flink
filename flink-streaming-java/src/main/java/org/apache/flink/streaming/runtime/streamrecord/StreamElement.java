@@ -28,6 +28,9 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 @Internal
 public abstract class StreamElement {
 
+	private long deduplicationTimestamp = -1;
+	private long sentTimestamp = -1;
+
 	/**
 	 * Checks whether this element is a watermark.
 	 * @return True, if this element is a watermark, false otherwise.
@@ -95,5 +98,21 @@ public abstract class StreamElement {
 	 */
 	public final LatencyMarker asLatencyMarker() {
 		return (LatencyMarker) this;
+	}
+
+	public final long getDeduplicationTimestamp() {
+		return deduplicationTimestamp;
+	}
+
+	public final long getSentTimestamp() {
+		return sentTimestamp;
+	}
+
+	public final void setDeduplicationTimestamp(long deduplicationTimestamp) {
+		this.deduplicationTimestamp = deduplicationTimestamp;
+	}
+
+	public final void setSentTimestamp(long sentTimestamp) {
+		this.sentTimestamp = sentTimestamp;
 	}
 }

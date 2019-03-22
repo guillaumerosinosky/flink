@@ -40,6 +40,7 @@ import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
@@ -85,6 +86,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 	private final WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainEntryPoint;
 
 	private final OP headOperator;
+	private final boolean isSource;
 
 	/**
 	 * Current status of the input stream of the operator chain.
@@ -102,6 +104,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		final StreamConfig configuration = containingTask.getConfiguration();
 
 		headOperator = configuration.getStreamOperator(userCodeClassloader);
+
+		this.isSource = (headOperator instanceof StreamSource);
+
+		if (this.isSource) {
+			LOG.info("Our operator chain has a source as head! :) ");
+		}
 
 		// we read the chained configs, and the order of record writer registrations by output name
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(userCodeClassloader);
@@ -176,6 +184,8 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		this.streamOutputs = checkNotNull(streamOutputs);
 		this.chainEntryPoint = checkNotNull(chainEntryPoint);
 		this.headOperator = checkNotNull(headOperator);
+
+		this.isSource = (headOperator instanceof StreamSource);
 	}
 
 	@Override
@@ -406,7 +416,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			outSerializer = upStreamConfig.getTypeSerializerOut(taskEnvironment.getUserClassLoader());
 		}
 
-		return new RecordWriterOutput<>(streamRecordWriter, outSerializer, sideOutputTag, this);
+		return new RecordWriterOutput<>(streamRecordWriter, outSerializer, sideOutputTag, this, this.isSource);
 	}
 
 	// ------------------------------------------------------------------------
