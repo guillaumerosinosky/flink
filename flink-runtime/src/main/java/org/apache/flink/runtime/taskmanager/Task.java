@@ -363,6 +363,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			this.producedPartitions[counter] = new ResultPartition(
 				taskNameWithSubtaskAndId,
 				this,
+				desc.getReplicationFactor(),
 				jobId,
 				partitionId,
 				desc.getPartitionType(),

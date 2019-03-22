@@ -60,4 +60,6 @@ public interface ResultPartitionWriter {
 	 * Manually trigger consumption from enqueued {@link BufferConsumer BufferConsumers} in one specified subpartition.
 	 */
 	void flush(int subpartitionIndex);
+
+	int getReplicationFactor();
 }

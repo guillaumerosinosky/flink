@@ -113,6 +113,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 */
 	private final AtomicInteger pendingReferences = new AtomicInteger();
 
+	private final int replicationFactor;
+
 	private BufferPool bufferPool;
 
 	private boolean hasNotifiedPipelinedConsumers;
@@ -132,8 +134,39 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		ResultPartitionManager partitionManager,
 		ResultPartitionConsumableNotifier partitionConsumableNotifier,
 		IOManager ioManager,
+		boolean sendScheduleOrUpdateConsumersMessage
+	) {
+		this(
+			owningTaskName,
+			taskActions, // actions on the owning task
+			1, // default replication factor
+			jobId,
+			partitionId,
+			partitionType,
+			numberOfSubpartitions,
+			numTargetKeyGroups,
+			partitionManager,
+			partitionConsumableNotifier,
+			ioManager,
+			sendScheduleOrUpdateConsumersMessage
+		);
+	}
+
+	public ResultPartition(
+		String owningTaskName,
+		TaskActions taskActions, // actions on the owning task
+		int replicationFactor,
+		JobID jobId,
+		ResultPartitionID partitionId,
+		ResultPartitionType partitionType,
+		int numberOfSubpartitions,
+		int numTargetKeyGroups,
+		ResultPartitionManager partitionManager,
+		ResultPartitionConsumableNotifier partitionConsumableNotifier,
+		IOManager ioManager,
 		boolean sendScheduleOrUpdateConsumersMessage) {
 
+		this.replicationFactor = replicationFactor;
 		this.owningTaskName = checkNotNull(owningTaskName);
 		this.taskActions = checkNotNull(taskActions);
 		this.jobId = checkNotNull(jobId);
@@ -265,6 +298,11 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	@Override
 	public void flush(int subpartitionIndex) {
 		subpartitions[subpartitionIndex].flush();
+	}
+
+	@Override
+	public int getReplicationFactor() {
+		return replicationFactor;
 	}
 
 	/**

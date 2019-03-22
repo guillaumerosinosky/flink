@@ -61,4 +61,9 @@ public class RecordCollectingResultPartitionWriter extends AbstractCollectingRes
 			}
 		}
 	}
+
+	@Override
+	public int getReplicationFactor() {
+		return 1;
+	}
 }
