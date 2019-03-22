@@ -72,7 +72,7 @@ under the License.
 		<module>flink-queryable-state</module>
 		<module>flink-tests</module>
 		<module>flink-end-to-end-tests</module>
-		<module>flink-test-utils-parent</module>
+		<!--<module>flink-test-utils-parent</module>-->
 		<module>flink-state-backends</module>
 		<module>flink-libraries</module>
 		<module>flink-quickstart</module>
