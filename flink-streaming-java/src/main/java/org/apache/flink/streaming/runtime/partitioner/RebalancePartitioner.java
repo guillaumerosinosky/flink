@@ -21,8 +21,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-import java.util.concurrent.ThreadLocalRandom;
-
 /**
  * Partitioner that distributes the data equally by cycling through the output
  * channels.
@@ -51,7 +49,7 @@ public class RebalancePartitioner<T> extends StreamPartitioner<T> {
 			int newChannel) {
 		if (newChannel == Integer.MAX_VALUE) {
 			// Initializes the first partition, this branch is only entered when initializing.
-			return ThreadLocalRandom.current().nextInt(numChannels);
+			return 0;
 		}
 		return 0;
 	}
