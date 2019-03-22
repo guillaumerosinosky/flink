@@ -126,6 +126,7 @@ public class LocalInputChannelTest {
 			final ResultPartition partition = new ResultPartition(
 				"Test Name",
 				taskActions,
+				1,
 				jobId,
 				partitionIds[i],
 				ResultPartitionType.PIPELINED,
@@ -296,6 +297,7 @@ public class LocalInputChannelTest {
 			new IntermediateDataSetID(),
 			ResultPartitionType.PIPELINED,
 			0,
+			1,
 			1,
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
@@ -495,6 +497,7 @@ public class LocalInputChannelTest {
 					ResultPartitionType.PIPELINED,
 					subpartitionIndex,
 					numberOfInputChannels,
+					1,
 					mock(TaskActions.class),
 					UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 					true);

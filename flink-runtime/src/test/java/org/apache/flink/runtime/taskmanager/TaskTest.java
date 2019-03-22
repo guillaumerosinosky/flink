@@ -1033,7 +1033,7 @@ public class TaskTest extends TestLogger {
 				1,
 				1,
 				invokable.getName(),
-				new Configuration());
+				new Configuration(), 1);
 
 			final BlobCacheService blobCacheService = new BlobCacheService(
 				mock(PermanentBlobCache.class),

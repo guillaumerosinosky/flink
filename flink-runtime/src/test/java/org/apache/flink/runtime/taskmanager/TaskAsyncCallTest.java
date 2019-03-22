@@ -245,7 +245,7 @@ public class TaskAsyncCallTest extends TestLogger {
 			1,
 			1,
 			invokableClass.getName(),
-			new Configuration());
+			new Configuration(), 1);
 
 		return new Task(
 			jobInformation,

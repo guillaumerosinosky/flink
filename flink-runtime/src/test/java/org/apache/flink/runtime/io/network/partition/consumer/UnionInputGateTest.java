@@ -51,14 +51,18 @@ public class UnionInputGateTest {
 		final SingleInputGate ig1 = new SingleInputGate(
 			testTaskName, new JobID(),
 			new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
-			0, 3,
+			0,
+			3,
+			1,
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);
 		final SingleInputGate ig2 = new SingleInputGate(
 			testTaskName, new JobID(),
 			new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
-			0, 5,
+			0,
+			5,
+			1,
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);

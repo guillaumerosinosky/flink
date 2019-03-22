@@ -21,6 +21,7 @@ package org.apache.flink.runtime.operators.testutils;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.TaskInfo;
+import org.apache.flink.api.common.TaskInfoBuilder;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
@@ -134,7 +135,7 @@ public class MockEnvironment implements Environment, AutoCloseable {
 		this.jobID = jobID;
 		this.jobVertexID = jobVertexID;
 
-		this.taskInfo = new TaskInfo(taskName, maxParallelism, subtaskIndex, parallelism, 0);
+		this.taskInfo = new TaskInfoBuilder().setTaskName(taskName).setMaximumParallelism(maxParallelism).setSubtaskIndex(subtaskIndex).setNumberOfSubtasks(parallelism).setAttemptNumber(0).createTaskInfo();
 		this.jobConfiguration = new Configuration();
 		this.taskConfiguration = taskConfiguration;
 		this.inputs = new LinkedList<InputGate>();

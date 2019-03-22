@@ -265,6 +265,7 @@ public class ResultPartitionTest {
 		return new ResultPartition(
 			"TestTask",
 			mock(TaskActions.class),
+			1,
 			new JobID(),
 			new ResultPartitionID(),
 			type,

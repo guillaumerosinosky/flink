@@ -60,6 +60,7 @@ public class TestSingleInputGate {
 			ResultPartitionType.PIPELINED,
 			0,
 			numberOfInputChannels,
+			1,
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);

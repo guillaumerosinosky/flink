@@ -65,13 +65,16 @@ public class InputGateConcurrentTest {
 		final ResultPartitionManager resultPartitionManager = createResultPartitionManager(partitions);
 
 		final SingleInputGate gate = new SingleInputGate(
-				"Test Task Name",
-				new JobID(),
-				new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
-				0, numChannels,
-				mock(TaskActions.class),
-				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
-				true);
+			"Test Task Name",
+			new JobID(),
+			new IntermediateDataSetID(),
+			ResultPartitionType.PIPELINED,
+			0,
+			numChannels,
+			1,
+			mock(TaskActions.class),
+			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
+			true);
 
 		for (int i = 0; i < numChannels; i++) {
 			LocalInputChannel channel = new LocalInputChannel(gate, i, new ResultPartitionID(),
@@ -106,6 +109,7 @@ public class InputGateConcurrentTest {
 				new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
 				0,
 				numChannels,
+				1,
 				mock(TaskActions.class),
 				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 				true);
@@ -156,6 +160,7 @@ public class InputGateConcurrentTest {
 				new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
 				0,
 				numChannels,
+				1,
 				mock(TaskActions.class),
 				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 				true);

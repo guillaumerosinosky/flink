@@ -2162,7 +2162,7 @@ public class TaskManagerTest extends TestLogger {
 			parallelism,
 			numberOfKeyGroups,
 			invokableClassName,
-			taskConfiguration);
+			taskConfiguration, 1);
 
 		SerializedValue<JobInformation> serializedJobInformation = new SerializedValue<>(jobInformation);
 		SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(taskInformation);

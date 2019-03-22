@@ -160,7 +160,7 @@ public class JvmExitOnFatalErrorTest {
 						Collections.emptyList(), Collections.emptyList());
 
 				final TaskInformation taskInformation = new TaskInformation(
-						jobVertexId, "Test Task", 1, 1, OomInvokable.class.getName(), new Configuration());
+						jobVertexId, "Test Task", 1, 1, OomInvokable.class.getName(), new Configuration(), 1);
 
 				final MemoryManager memoryManager = new MemoryManager(1024 * 1024, 1);
 				final IOManager ioManager = new IOManagerAsync();

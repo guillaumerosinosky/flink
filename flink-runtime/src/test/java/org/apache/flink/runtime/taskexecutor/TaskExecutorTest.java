@@ -683,7 +683,7 @@ public class TaskExecutorTest extends TestLogger {
 				1,
 				1,
 				TestInvokable.class.getName(),
-				new Configuration());
+				new Configuration(), 1);
 
 		SerializedValue<JobInformation> serializedJobInformation = new SerializedValue<>(jobInformation);
 		SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(taskInformation);
@@ -1087,7 +1087,7 @@ public class TaskExecutorTest extends TestLogger {
 				1,
 				1,
 				NoOpInvokable.class.getName(),
-				new Configuration());
+				new Configuration(), 1);
 
 			SerializedValue<JobInformation> serializedJobInformation = new SerializedValue<>(jobInformation);
 			SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(taskInformation);

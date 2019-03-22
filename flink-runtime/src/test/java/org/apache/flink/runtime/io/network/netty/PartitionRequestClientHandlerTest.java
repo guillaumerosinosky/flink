@@ -220,6 +220,7 @@ public class PartitionRequestClientHandlerTest {
 			ResultPartitionType.PIPELINED,
 			0,
 			1,
+			1,
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);

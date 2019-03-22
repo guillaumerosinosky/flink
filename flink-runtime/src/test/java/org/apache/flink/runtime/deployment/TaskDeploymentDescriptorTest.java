@@ -80,7 +80,7 @@ public class TaskDeploymentDescriptorTest extends TestLogger {
 	private final SerializedValue<JobInformation> serializedJobInformation = new SerializedValue<>(new JobInformation(
 		jobID, jobName, executionConfig, jobConfiguration, requiredJars, requiredClasspaths));
 	private final SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(new TaskInformation(
-		vertexID, taskName, currentNumberOfSubtasks, numberOfKeyGroups, invokableClass.getName(), taskConfiguration));
+		vertexID, taskName, currentNumberOfSubtasks, numberOfKeyGroups, invokableClass.getName(), taskConfiguration, 1));
 
 	public TaskDeploymentDescriptorTest() throws IOException {}
 
