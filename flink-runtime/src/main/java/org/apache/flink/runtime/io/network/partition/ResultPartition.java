@@ -456,9 +456,17 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 		int refCnt = pendingReferences.decrementAndGet();
 
+		try {
+			subpartitions[subpartitionIndex].release();
+		} catch (IOException e) {
+			// TODO: how should this be handled?
+			throw new RuntimeException(e);
+		}
+
 		if (refCnt == 0) {
 			partitionManager.onConsumedPartition(this);
 		}
+
 		else if (refCnt < 0) {
 			throw new IllegalStateException("All references released.");
 		}

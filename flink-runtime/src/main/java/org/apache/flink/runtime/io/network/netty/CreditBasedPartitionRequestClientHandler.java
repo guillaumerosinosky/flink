@@ -24,10 +24,10 @@ import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.io.network.netty.NettyMessage.AddCredit;
 import org.apache.flink.runtime.io.network.netty.exception.LocalTransportException;
 import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.netty.exception.TransportException;
-import org.apache.flink.runtime.io.network.netty.NettyMessage.AddCredit;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
@@ -37,6 +37,7 @@ import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 
 import org.slf4j.Logger;
@@ -133,12 +134,32 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		if (!inputChannels.isEmpty()) {
 			final SocketAddress remoteAddr = ctx.channel().remoteAddress();
 
-			notifyAllChannelsOfErrorAndClose(new RemoteTransportException(
+			RemoteTransportException cause = new RemoteTransportException(
 				"Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
-					+ "This might indicate that the remote task manager was lost.", remoteAddr));
+					+ "This might indicate that the remote task manager was lost.", remoteAddr);
+			notifyChannelOfErrorAndClose(ctx, cause);
 		}
 
 		super.channelInactive(ctx);
+	}
+
+	private void notifyChannelOfErrorAndClose(ChannelHandlerContext ctx, Throwable cause) {
+
+		if (ctx != null) {
+			ctx.close();
+		} else {
+			LOG.warn("CTX was null, don't know what to do here");
+			return;
+		}
+
+		ChannelId id = ctx.channel().id();
+		RemoteInputChannel inputChannel = this.inputChannels.get(id);
+
+		if (inputChannel != null) {
+			inputChannel.onError(cause);
+			this.inputChannelsWithCredit.remove(inputChannel);
+			this.inputChannels.remove(id);
+		}
 	}
 
 	/**
@@ -149,7 +170,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 		if (cause instanceof TransportException) {
-			notifyAllChannelsOfErrorAndClose(cause);
+			notifyChannelOfErrorAndClose(ctx, cause);
 		} else {
 			final SocketAddress remoteAddr = ctx.channel().remoteAddress();
 
@@ -165,7 +186,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 					String.format("%s (connection to '%s')", cause.getMessage(), remoteAddr), localAddr, cause);
 			}
 
-			notifyAllChannelsOfErrorAndClose(tex);
+			notifyChannelOfErrorAndClose(ctx, cause);
 		}
 	}
 
@@ -174,7 +195,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		try {
 			decodeMsg(msg);
 		} catch (Throwable t) {
-			notifyAllChannelsOfErrorAndClose(t);
+			notifyChannelOfErrorAndClose(ctx, t);
 		}
 	}
 
@@ -205,7 +226,8 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	}
 
 	private void notifyAllChannelsOfErrorAndClose(Throwable cause) {
-		if (channelError.compareAndSet(null, cause)) {
+		LOG.warn("We still ended up here in notifyAllChannelsOfErrorAndClose", new Throwable("NotifyChannelsOfErrorAndClose"));
+		/*if (channelError.compareAndSet(null, cause)) {
 			try {
 				for (RemoteInputChannel inputChannel : inputChannels.values()) {
 					inputChannel.onError(cause);
@@ -214,14 +236,14 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 				// We can only swallow the Exception at this point. :(
 				LOG.warn("An Exception was thrown during error notification of a remote input channel.", t);
 			} finally {
-				inputChannels.clear();
-				inputChannelsWithCredit.clear();
+//				inputChannels.clear();
+//				inputChannelsWithCredit.clear();
 
 				if (ctx != null) {
 					ctx.close();
 				}
 			}
-		}
+		}*/
 	}
 
 	// ------------------------------------------------------------------------

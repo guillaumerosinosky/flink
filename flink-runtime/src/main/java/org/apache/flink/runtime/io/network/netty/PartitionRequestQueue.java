@@ -312,6 +312,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	}
 
 	private void releaseAllResources() throws IOException {
+
+		LOG.debug("Releasing all resources for readers {}", allReaders.values());
+
 		// note: this is only ever executed by one thread: the Netty IO thread!
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
 			reader.releaseAllResources();
