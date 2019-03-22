@@ -28,7 +28,11 @@ import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSeria
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.XORShiftRandom;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -52,6 +56,8 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public class RecordWriter<T extends IOReadableWritable> {
 
+	private static final Logger LOG = LoggerFactory.getLogger(RecordWriter.class);
+
 	protected final ResultPartitionWriter targetPartition;
 
 	private final ChannelSelector<T> channelSelector;
@@ -67,6 +73,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 	private final Random rng = new XORShiftRandom();
 
 	private final boolean flushAlways;
+
+	private final int replicationFactor;
+
+	private final ChannelSelector<T> selector;
 
 	private Counter numBytesOut = new SimpleCounter();
 
@@ -85,7 +95,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
-
+		this.replicationFactor = writer.getReplicationFactor();
 		this.numChannels = writer.getNumberOfSubpartitions();
 
 		this.serializer = new SpanningRecordSerializer<T>();
@@ -95,10 +105,12 @@ public class RecordWriter<T extends IOReadableWritable> {
 			broadcastChannels[i] = i;
 			bufferBuilders[i] = Optional.empty();
 		}
+
+		selector = new ReplicationAwareSelector<>(channelSelector, replicationFactor);
 	}
 
 	public void emit(T record) throws IOException, InterruptedException {
-		emit(record, channelSelector.selectChannels(record, numChannels));
+		emit(record, selector.selectChannels(record, numChannels));
 	}
 
 	/**
@@ -121,6 +133,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	private void emit(T record, int[] targetChannels) throws IOException, InterruptedException {
+
+		LOG.trace("Sending record {} to channels {}", ((SerializationDelegate) record).getInstance(), targetChannels);
+
 		serializer.serializeRecord(record);
 
 		boolean pruneAfterCopying = false;
