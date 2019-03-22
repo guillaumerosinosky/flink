@@ -265,6 +265,12 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
+	public int getUpstreamReplicationFactor() {
+		// TODO: This is used to have identical replication factor for all inputs!
+		return this.inputGates[0].getUpstreamReplicationFactor();
+	}
+
+	@Override
 	public void notifyInputGateNonEmpty(InputGate inputGate) {
 		queueInputGate(checkNotNull(inputGate));
 	}

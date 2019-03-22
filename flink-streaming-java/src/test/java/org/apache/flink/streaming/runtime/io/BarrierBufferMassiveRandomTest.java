@@ -205,5 +205,10 @@ public class BarrierBufferMassiveRandomTest {
 		public int getPageSize() {
 			return PAGE_SIZE;
 		}
+
+		@Override
+		public int getUpstreamReplicationFactor() {
+			return 0;
+		}
 	}
 }

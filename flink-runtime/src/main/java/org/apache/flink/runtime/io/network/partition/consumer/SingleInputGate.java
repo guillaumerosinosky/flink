@@ -121,6 +121,7 @@ public class SingleInputGate implements InputGate {
 
 	/** The type of the partition the input gate is consuming. */
 	private final ResultPartitionType consumedPartitionType;
+	private int upstreamReplicationFactor;
 
 	/**
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
@@ -190,6 +191,7 @@ public class SingleInputGate implements InputGate {
 		final ResultPartitionType consumedPartitionType,
 		int consumedSubpartitionIndex,
 		int numberOfInputChannels,
+		int upstreamReplicationFactor,
 		TaskActions taskActions,
 		TaskIOMetricGroup metrics,
 		boolean isCreditBased) {
@@ -199,6 +201,7 @@ public class SingleInputGate implements InputGate {
 
 		this.consumedResultId = checkNotNull(consumedResultId);
 		this.consumedPartitionType = checkNotNull(consumedPartitionType);
+		this.upstreamReplicationFactor = upstreamReplicationFactor;
 
 		checkArgument(consumedSubpartitionIndex >= 0);
 		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
@@ -213,6 +216,33 @@ public class SingleInputGate implements InputGate {
 		this.taskActions = checkNotNull(taskActions);
 		this.isCreditBased = isCreditBased;
 	}
+
+	// TODO: This feels like a dirty hack
+	public SingleInputGate(
+		String owningTaskName,
+		JobID jobId,
+		IntermediateDataSetID consumedResultId,
+		final ResultPartitionType consumedPartitionType,
+		int consumedSubpartitionIndex,
+		int numberOfInputChannels,
+		TaskActions taskActions,
+		TaskIOMetricGroup metrics,
+		boolean isCreditBased
+	) {
+		this(
+			owningTaskName,
+			jobId,
+			consumedResultId,
+			consumedPartitionType,
+			consumedSubpartitionIndex,
+			numberOfInputChannels,
+			1, // default replication factor
+			taskActions,
+			metrics,
+			isCreditBased
+		);
+	}
+
 
 	// ------------------------------------------------------------------------
 	// Properties
@@ -676,8 +706,17 @@ public class SingleInputGate implements InputGate {
 		final InputChannelDeploymentDescriptor[] icdd = checkNotNull(igdd.getInputChannelDeploymentDescriptors());
 
 		final SingleInputGate inputGate = new SingleInputGate(
-			owningTaskName, jobId, consumedResultId, consumedPartitionType, consumedSubpartitionIndex,
-			icdd.length, taskActions, metrics, networkEnvironment.isCreditBased());
+			owningTaskName,
+			jobId,
+			consumedResultId,
+			consumedPartitionType,
+			consumedSubpartitionIndex,
+			icdd.length,
+			igdd.getPerEdgeUpstreamReplicationFactor(),
+			taskActions,
+			metrics,
+			networkEnvironment.isCreditBased()
+		);
 
 		// Create the input channels. There is one input channel for each consumed partition.
 		final InputChannel[] inputChannels = new InputChannel[icdd.length];
@@ -739,5 +778,9 @@ public class SingleInputGate implements InputGate {
 			numUnknownChannels);
 
 		return inputGate;
+	}
+
+	public int getUpstreamReplicationFactor() {
+		return upstreamReplicationFactor;
 	}
 }
