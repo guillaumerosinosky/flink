@@ -423,7 +423,10 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		// the failover strategy must be instantiated last, so that the execution graph
 		// is ready by the time the failover strategy sees it
-		this.failoverStrategy = checkNotNull(failoverStrategyFactory.create(this), "null failover strategy");
+		// TODO: Fix this again
+		this.failoverStrategy = new ReplicatedFailoverStrategy(this);
+
+		// this.failoverStrategy = checkNotNull(failoverStrategyFactory.create(this), "null failover strategy");
 
 		this.schedulingFuture = null;
 		LOG.info("Job recovers via failover strategy: {}", failoverStrategy.getStrategyName());
@@ -1580,7 +1583,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 						return true;
 
 					case FAILED:
-						// TODO: Marker handle failure!
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFailed(state.getError(userClassLoader), accumulators, state.getIOMetrics());
@@ -1778,9 +1780,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {
 			final Throwable ex = error != null ? error : new FlinkException("Unknown Error (missing cause)");
-
-			// TODO: This is unused
-			long timestamp = execution.getStateTimestamp(ExecutionState.FAILED);
 
 			// by filtering out late failure calls, we can save some work in
 			// avoiding redundant local failover
