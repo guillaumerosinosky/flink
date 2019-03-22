@@ -158,7 +158,8 @@ public class MiniClusterConfiguration {
 
 		public MiniClusterConfiguration build() {
 			final Configuration modifiedConfiguration = new Configuration(configuration);
-			modifiedConfiguration.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, numSlotsPerTaskManager);
+			// TODO: We now have two slots per TM. Fix this in scheduler, will only work for mini cluster
+			modifiedConfiguration.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, numSlotsPerTaskManager * 2);
 			modifiedConfiguration.setString(
 				RestOptions.ADDRESS,
 				modifiedConfiguration.getString(RestOptions.ADDRESS, "localhost"));
