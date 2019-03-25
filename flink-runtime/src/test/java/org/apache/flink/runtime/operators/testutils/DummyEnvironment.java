@@ -21,7 +21,6 @@ package org.apache.flink.runtime.operators.testutils;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.TaskInfo;
-import org.apache.flink.api.common.TaskInfoBuilder;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
@@ -76,7 +75,7 @@ public class DummyEnvironment implements Environment {
 	}
 
 	public DummyEnvironment(String taskName, int numSubTasks, int subTaskIndex, int maxParallelism) {
-		this.taskInfo = new TaskInfoBuilder().setTaskName(taskName).setMaximumParallelism(maxParallelism).setSubtaskIndex(subTaskIndex).setNumberOfSubtasks(numSubTasks).setAttemptNumber(0).createTaskInfo();
+		this.taskInfo = new TaskInfo(taskName, maxParallelism, subTaskIndex, numSubTasks, 0);
 		this.taskStateManager = new TestTaskStateManager();
 	}
 
