@@ -26,6 +26,7 @@ import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -265,9 +266,10 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
-	public int getUpstreamReplicationFactor() {
-		// TODO: This is used to have identical replication factor for all inputs!
-		return this.inputGates[0].getUpstreamReplicationFactor();
+	public int[] getUpstreamReplicationFactor() {
+		return Arrays.stream(this.inputGates)
+			.flatMapToInt(inputGate -> Arrays.stream(inputGate.getUpstreamReplicationFactor()))
+			.toArray();
 	}
 
 	@Override

@@ -148,7 +148,8 @@ public class StreamInputProcessor<IN> {
 			streamOperator,
 			checkpointLock,
 			numInputChannels,
-			numInputChannels / inputGate.getUpstreamReplicationFactor(),
+			inputGate.getUpstreamReplicationFactor(),
+			// numInputChannels / inputGate.getUpstreamReplicationFactor(),
 			watermarkGauge,
 			streamStatusMaintainer
 		);

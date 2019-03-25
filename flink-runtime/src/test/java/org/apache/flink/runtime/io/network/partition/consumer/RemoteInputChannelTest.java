@@ -1041,7 +1041,7 @@ public class RemoteInputChannelTest {
 			ResultPartitionType.PIPELINED,
 			0,
 			1,
-			1,
+			new int[]{1},
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);

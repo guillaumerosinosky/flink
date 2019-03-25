@@ -71,7 +71,7 @@ public class InputGateConcurrentTest {
 			ResultPartitionType.PIPELINED,
 			0,
 			numChannels,
-			1,
+			new int[]{1},
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);
@@ -109,7 +109,7 @@ public class InputGateConcurrentTest {
 				new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
 				0,
 				numChannels,
-				1,
+				new int[]{1},
 				mock(TaskActions.class),
 				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 				true);
@@ -160,7 +160,7 @@ public class InputGateConcurrentTest {
 				new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
 				0,
 				numChannels,
-				1,
+				new int[]{1},
 				mock(TaskActions.class),
 				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 				true);

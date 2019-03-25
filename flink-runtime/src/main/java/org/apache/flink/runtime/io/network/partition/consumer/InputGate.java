@@ -95,5 +95,5 @@ public interface InputGate {
 
 	int getPageSize();
 
-	int getUpstreamReplicationFactor();
+	int[] getUpstreamReplicationFactor();
 }

@@ -207,8 +207,8 @@ public class BarrierBufferMassiveRandomTest {
 		}
 
 		@Override
-		public int getUpstreamReplicationFactor() {
-			return 0;
+		public int[] getUpstreamReplicationFactor() {
+			return new int[]{1};
 		}
 	}
 }

@@ -50,7 +50,7 @@ public class InputGateDeploymentDescriptor implements Serializable {
 	/** The type of the partition the input gate is going to consume. */
 	private final ResultPartitionType consumedPartitionType;
 
-	private int[] perEdgeUpstreamReplicationFactor;
+	private int[] upstreamReplicationFactor;
 
 	/**
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
@@ -71,7 +71,6 @@ public class InputGateDeploymentDescriptor implements Serializable {
 			consumedResultId,
 			consumedPartitionType,
 			consumedSubpartitionIndex,
-			// TODO: Thesis - This breaks for anything but one upstream edge!
 			new int[]{1}, // default upstream replication factor
 			inputChannels);
 	}
@@ -80,13 +79,13 @@ public class InputGateDeploymentDescriptor implements Serializable {
 		IntermediateDataSetID consumedResultId,
 		ResultPartitionType consumedPartitionType,
 		int consumedSubpartitionIndex,
-		int[] perEdgeUpstreamReplicationFactor,
+		int[] upstreamReplicationFactor,
 		InputChannelDeploymentDescriptor[] inputChannels
 	) {
 
 		this.consumedResultId = checkNotNull(consumedResultId);
 		this.consumedPartitionType = checkNotNull(consumedPartitionType);
-		this.perEdgeUpstreamReplicationFactor = perEdgeUpstreamReplicationFactor;
+		this.upstreamReplicationFactor = upstreamReplicationFactor;
 
 		checkArgument(consumedSubpartitionIndex >= 0);
 		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
@@ -123,11 +122,11 @@ public class InputGateDeploymentDescriptor implements Serializable {
 				Arrays.toString(inputChannels));
 	}
 
-	public int[] getPerEdgeUpstreamReplicationFactor() {
-		return perEdgeUpstreamReplicationFactor;
+	public int[] getUpstreamReplicationFactor() {
+		return upstreamReplicationFactor;
 	}
 
-	public void setPerEdgeUpstreamReplicationFactor(int[] perEdgeUpstreamReplicationFactor) {
-		this.perEdgeUpstreamReplicationFactor = perEdgeUpstreamReplicationFactor;
+	public void setUpstreamReplicationFactor(int[] perEdgeUpstreamReplicationFactor) {
+		this.upstreamReplicationFactor = upstreamReplicationFactor;
 	}
 }

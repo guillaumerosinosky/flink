@@ -67,6 +67,102 @@ public class OrderingServiceTest {
 	}
 
 	@Test
+	public void testNumLogicalChannels() {
+
+		// actual channels:  | 0 |
+		// logical channels:   0
+		int numChannels = OrderingService.numLogicalChannels(1, new int[]{1});
+		Assert.assertEquals(1, numChannels);
+
+		// actual channels: | 0 1 |
+		// logical channels:   0
+		numChannels = OrderingService.numLogicalChannels(2, new int[]{2});
+		Assert.assertEquals(1, numChannels);
+
+		// actual channels: | 0 | 1 |
+		// logical channels:  0   1
+		numChannels = OrderingService.numLogicalChannels(2, new int[]{1, 1});
+		Assert.assertEquals(2, numChannels);
+
+		// actual channels: | 0 1 | 2 3 |
+		// logical channels:   0	 1
+		numChannels = OrderingService.numLogicalChannels(4, new int[]{2, 2});
+		Assert.assertEquals(2, numChannels);
+
+		// actual channels: | 0 | 1 2 |
+		// logical channels:  0    1
+		numChannels = OrderingService.numLogicalChannels(3, new int[]{1, 2});
+		Assert.assertEquals(2, numChannels);
+
+		// actual channels: | 0 1 | 2 |
+		// logical channels:   0	1
+		numChannels = OrderingService.numLogicalChannels(3, new int[]{2, 1});
+		Assert.assertEquals(2, numChannels);
+
+		// actual channels: | 0 1 | 2 | 3 4 5 6 |
+		// logical channels:   0	1	   2
+		numChannels = OrderingService.numLogicalChannels(3, new int[]{2, 1, 4});
+		Assert.assertEquals(3, numChannels);
+	}
+
+	@Test
+	public void testLogicalChannel() {
+		// channels: | 0 |
+		// logical	   0
+		int channel = OrderingService.logicalChannel(0, new int[]{1});
+		Assert.assertEquals(0, channel);
+
+
+		// actual channels:    0 1
+		// logical channels:    0
+		// replication factor [ 2 ]
+		channel = OrderingService.logicalChannel(0, new int[]{2});
+		Assert.assertEquals(0, channel);
+
+		channel = OrderingService.logicalChannel(1, new int[]{2});
+		Assert.assertEquals(0, channel);
+
+		// actual channels:    0 1 | 2
+		// logical channels:    0    1
+		// replication factor [ 2  , 1 ]
+		channel = OrderingService.logicalChannel(0, new int[]{2, 1});
+		Assert.assertEquals(0, channel);
+
+		channel = OrderingService.logicalChannel(1, new int[]{2, 1});
+		Assert.assertEquals(0, channel);
+
+		channel = OrderingService.logicalChannel(2, new int[]{2, 1});
+		Assert.assertEquals(1, channel);
+
+		// actual channels:     0 | 1 2
+		// logical channels:    0    1
+		// replication factor [ 1  , 2  ]
+		channel = OrderingService.logicalChannel(0, new int[]{1, 2});
+		Assert.assertEquals(0, channel);
+
+		channel = OrderingService.logicalChannel(1, new int[]{1, 2});
+		Assert.assertEquals(1, channel);
+
+		channel = OrderingService.logicalChannel(2, new int[]{1, 2});
+		Assert.assertEquals(1, channel);
+
+		// actual channels:     0 1 | 2 3
+		// logical channels:     0     1
+		// replication factor [  2  ,  2  ]
+		channel = OrderingService.logicalChannel(0, new int[]{2, 2});
+		Assert.assertEquals(0, channel);
+
+		channel = OrderingService.logicalChannel(1, new int[]{2, 2});
+		Assert.assertEquals(0, channel);
+
+		channel = OrderingService.logicalChannel(2, new int[]{2, 2});
+		Assert.assertEquals(1, channel);
+
+		channel = OrderingService.logicalChannel(3, new int[]{2, 2});
+		Assert.assertEquals(1, channel);
+	}
+
+	@Test
 	public void testDeliversDeterministically() throws Exception {
 		Random r = new Random();
 
@@ -86,7 +182,7 @@ public class OrderingServiceTest {
 				mo,
 				new Object(),
 				numActualChannels,
-				numLogicalChannels,
+				new int[]{2}, // replication factor when only single input gate upstream
 				watermarkGauge, // TODO: Fix those
 				streamStatusMaintainer
 			);

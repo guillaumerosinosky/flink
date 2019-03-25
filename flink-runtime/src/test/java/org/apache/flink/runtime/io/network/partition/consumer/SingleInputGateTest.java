@@ -336,7 +336,7 @@ public class SingleInputGateTest {
 
 		InputGateDeploymentDescriptor gateDesc =
 			new InputGateDeploymentDescriptor(new IntermediateDataSetID(),
-				ResultPartitionType.PIPELINED, 0, 1,channelDescs);
+				ResultPartitionType.PIPELINED, 0, new int[]{1},channelDescs);
 
 		int initialBackoff = 137;
 		int maxBackoff = 1001;
@@ -553,8 +553,8 @@ public class SingleInputGateTest {
 			new IntermediateDataSetID(),
 			partitionType,
 			0,
-			1,
 			numberOfInputChannels,
+			new int[]{1},
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			enableCreditBasedFlowControl);

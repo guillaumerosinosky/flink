@@ -53,7 +53,7 @@ public class UnionInputGateTest {
 			new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
 			0,
 			3,
-			1,
+			new int[]{1},
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);
@@ -62,7 +62,7 @@ public class UnionInputGateTest {
 			new IntermediateDataSetID(), ResultPartitionType.PIPELINED,
 			0,
 			5,
-			1,
+			new int[]{1},
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true);

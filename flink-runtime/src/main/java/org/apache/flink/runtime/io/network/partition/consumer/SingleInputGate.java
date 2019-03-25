@@ -48,6 +48,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
@@ -121,7 +122,8 @@ public class SingleInputGate implements InputGate {
 
 	/** The type of the partition the input gate is consuming. */
 	private final ResultPartitionType consumedPartitionType;
-	private int upstreamReplicationFactor;
+
+	private int[] upstreamReplicationFactor;
 
 	/**
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
@@ -191,7 +193,7 @@ public class SingleInputGate implements InputGate {
 		final ResultPartitionType consumedPartitionType,
 		int consumedSubpartitionIndex,
 		int numberOfInputChannels,
-		int upstreamReplicationFactor,
+		int[] upstreamReplicationFactor,
 		TaskActions taskActions,
 		TaskIOMetricGroup metrics,
 		boolean isCreditBased) {
@@ -202,6 +204,8 @@ public class SingleInputGate implements InputGate {
 		this.consumedResultId = checkNotNull(consumedResultId);
 		this.consumedPartitionType = checkNotNull(consumedPartitionType);
 		this.upstreamReplicationFactor = upstreamReplicationFactor;
+
+		LOG.info("Setup SingleInputGate at {} with upstream replication factors {} ", owningTaskName, Arrays.toString(upstreamReplicationFactor));
 
 		checkArgument(consumedSubpartitionIndex >= 0);
 		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
@@ -236,7 +240,7 @@ public class SingleInputGate implements InputGate {
 			consumedPartitionType,
 			consumedSubpartitionIndex,
 			numberOfInputChannels,
-			1, // default replication factor
+			new int[]{1}, // default replication factor
 			taskActions,
 			metrics,
 			isCreditBased
@@ -712,7 +716,7 @@ public class SingleInputGate implements InputGate {
 			consumedPartitionType,
 			consumedSubpartitionIndex,
 			icdd.length,
-			igdd.getPerEdgeUpstreamReplicationFactor(),
+			igdd.getUpstreamReplicationFactor(),
 			taskActions,
 			metrics,
 			networkEnvironment.isCreditBased()
@@ -780,7 +784,7 @@ public class SingleInputGate implements InputGate {
 		return inputGate;
 	}
 
-	public int getUpstreamReplicationFactor() {
+	public int[] getUpstreamReplicationFactor() {
 		return upstreamReplicationFactor;
 	}
 }

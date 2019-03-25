@@ -255,7 +255,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	// TODO: Thesis - check invocations of this
 	@Deprecated // this will return the number of execution vertices, parallelism is now a separate concept
 	public int getTotalNumberOfParallelSubtasks() {
-		return this.jobVertex.getParallelism() * jobVertex.getReplicationFactor();
+		return this.jobVertex.getParallelism();
+	}
+
+	public int getNumberOfExecutionVertices() {
+		return this.jobVertex.getNumberOfExecutionVertices();
 	}
 
 	// TODO: Thesis - check invocations of this
@@ -382,7 +386,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	public void connectSource(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber) {
 
-		final DistributionPattern pattern = edge.getDistributionPattern();
+		// TODO: Thesis - Implement pointwise connection properly and use it
+		//		This is just a workaround for now to hope this might keep stuff
+		//		from breaking
+		final DistributionPattern pattern = DistributionPattern.ALL_TO_ALL;
 		final IntermediateResultPartition[] sourcePartitions = source.getPartitions();
 
 		ExecutionEdge[] edges;
@@ -422,6 +429,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		return edges;
 	}
 
+	// TODO: Thesis - This breaks and needs to be fixed properly
 	private ExecutionEdge[] connectPointwise(IntermediateResultPartition[] sourcePartitions, int inputNumber) {
 		final int numSources = sourcePartitions.length;
 		final int parallelism = getTotalNumberOfParallelSubtasks();
@@ -852,11 +860,18 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			final IntermediateDataSetID resultId = consumedIntermediateResult.getId();
 			final ResultPartitionType partitionType = consumedIntermediateResult.getResultType();
 
-			int[] perEdgeUpstreamReplicationFactor = Arrays.stream(edges)
-				.mapToInt(edge -> edge.getSource().getProducer().jobVertex.getReplicationFactor())
-				.toArray();
+			int[] upstreamReplicationFactor = new int[edges.length / edges[0].getSource().getProducer().jobVertex.getReplicationFactor()];
+			Arrays.setAll(upstreamReplicationFactor, i -> edges[0].getSource().getProducer().jobVertex.getReplicationFactor());
 
-			consumedPartitions.add(new InputGateDeploymentDescriptor(resultId, partitionType, queueToRequest, perEdgeUpstreamReplicationFactor, partitions));
+			InputGateDeploymentDescriptor descriptor = new InputGateDeploymentDescriptor(
+				resultId,
+				partitionType,
+				queueToRequest,
+				upstreamReplicationFactor,
+				partitions
+			);
+
+			consumedPartitions.add(descriptor);
 		}
 
 		final Either<SerializedValue<JobInformation>, PermanentBlobKey> jobInformationOrBlobKey = getExecutionGraph().getJobInformationOrBlobKey();

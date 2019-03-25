@@ -64,8 +64,8 @@ public class MockInputGate implements InputGate {
 	}
 
 	@Override
-	public int getUpstreamReplicationFactor() {
-		return 0;
+	public int[] getUpstreamReplicationFactor() {
+		return new int[]{1};
 	}
 
 	@Override

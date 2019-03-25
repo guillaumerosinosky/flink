@@ -298,7 +298,7 @@ public class LocalInputChannelTest {
 			ResultPartitionType.PIPELINED,
 			0,
 			1,
-			1,
+			new int[]{1},
 			mock(TaskActions.class),
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 			true
@@ -497,7 +497,7 @@ public class LocalInputChannelTest {
 					ResultPartitionType.PIPELINED,
 					subpartitionIndex,
 					numberOfInputChannels,
-					1,
+					new int[]{1},
 					mock(TaskActions.class),
 					UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup(),
 					true);
