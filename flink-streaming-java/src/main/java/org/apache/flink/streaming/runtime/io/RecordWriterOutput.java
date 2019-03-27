@@ -26,6 +26,7 @@ import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -178,6 +179,24 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 			recordWriter.randomEmit(serializationDelegate);
 		}
 		catch (Exception e) {
+			throw new RuntimeException(e.getMessage(), e);
+		}
+	}
+
+	@Override
+	public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		if (this.isSource) {
+			delayMarker.setSentTimestamp(System.currentTimeMillis());
+		}
+		delayMarker.setDeduplicationTimestamp(++lastDedupTs);
+
+		serializationDelegate.setInstance(delayMarker);
+
+		try {
+			// TODO: Thesis - Is broadcast really the right solution here?
+			//	Think this through
+			recordWriter.broadcastEmit(serializationDelegate);
+		} catch (Exception e) {
 			throw new RuntimeException(e.getMessage(), e);
 		}
 	}

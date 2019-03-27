@@ -24,13 +24,16 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * {@link StreamOperator} for streaming sources.
@@ -79,6 +82,13 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 				getRuntimeContext().getIndexOfThisSubtask());
 		}
 
+		IdleMarksEmitter<OUT> idleMarksEmitter = new IdleMarksEmitter<>(
+			collector,
+			1000
+		);
+
+		LOG.info("started Idle marks emitter");
+
 		final long watermarkInterval = getRuntimeContext().getExecutionConfig().getAutoWatermarkInterval();
 
 		this.ctx = StreamSourceContexts.getSourceContext(
@@ -102,6 +112,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 		} finally {
 			// make sure that the context is closed in any case
 			ctx.close();
+			idleMarksEmitter.close();
 			if (latencyEmitter != null) {
 				latencyEmitter.close();
 			}
@@ -137,6 +148,29 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 	 */
 	protected boolean isCanceledOrStopped() {
 		return canceledOrStopped;
+	}
+
+	private static class IdleMarksEmitter<OUT> {
+		private final ScheduledFuture<?> idleMarksTimer;
+
+		public IdleMarksEmitter(
+			final Output<StreamRecord<OUT>> output,
+			final long boundedIdlenessInterval
+		) {
+
+			this.idleMarksTimer = Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
+				try {
+					output.emitBoundedDelayMarker(new BoundedDelayMarker());
+					LOG.info("next bounded delay marker");
+				} catch (Throwable t) {
+					LOG.warn("Error while emitting bounded delay marker. ", t);
+				}
+			}, 0L, boundedIdlenessInterval, TimeUnit.MILLISECONDS);
+		}
+
+		public void close() {
+			this.idleMarksTimer.cancel(true);
+		}
 	}
 
 	private static class LatencyMarksEmitter<OUT> {

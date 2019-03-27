@@ -23,6 +23,7 @@ import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OperatorChain;
@@ -115,6 +116,13 @@ public class DirectedOutput<OUT> implements OperatorChain.WatermarkGaugeExposing
 	public void emitLatencyMarker(LatencyMarker latencyMarker) {
 		// randomly select an output
 		allOutputs[random.nextInt(allOutputs.length)].emitLatencyMarker(latencyMarker);
+	}
+
+	@Override
+	public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		for (Output<StreamRecord<OUT>> out : allOutputs) {
+			out.emitBoundedDelayMarker(delayMarker);
+		}
 	}
 
 	protected Set<Output<StreamRecord<OUT>>> selectOutputs(StreamRecord<OUT> record)  {

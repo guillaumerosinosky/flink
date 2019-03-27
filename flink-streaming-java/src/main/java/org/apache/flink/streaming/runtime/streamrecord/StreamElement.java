@@ -63,6 +63,10 @@ public abstract class StreamElement {
 		return getClass() == LatencyMarker.class;
 	}
 
+	public final boolean isBoundedDelayMarker() {
+		return getClass() == BoundedDelayMarker.class;
+	}
+
 	/**
 	 * Casts this element into a StreamRecord.
 	 * @return This element as a stream record.
@@ -98,6 +102,10 @@ public abstract class StreamElement {
 	 */
 	public final LatencyMarker asLatencyMarker() {
 		return (LatencyMarker) this;
+	}
+
+	public final BoundedDelayMarker asBoundedDelayMarker() {
+		return (BoundedDelayMarker) this;
 	}
 
 	public final long getDeduplicationTimestamp() {

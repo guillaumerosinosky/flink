@@ -20,6 +20,7 @@ package org.apache.flink.streaming.util;
 
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -48,6 +49,11 @@ public class CollectorOutput<T> implements Output<StreamRecord<T>> {
 	@Override
 	public void emitLatencyMarker(LatencyMarker latencyMarker) {
 		list.add(latencyMarker);
+	}
+
+	@Override
+	public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		list.add(delayMarker);
 	}
 
 	@Override

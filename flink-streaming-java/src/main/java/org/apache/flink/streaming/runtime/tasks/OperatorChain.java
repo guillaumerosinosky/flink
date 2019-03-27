@@ -45,6 +45,7 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
@@ -526,6 +527,15 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 
 		@Override
+		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+			try {
+				operator.processBoundedDelayMarker(delayMarker);
+			} catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+		}
+
+		@Override
 		public void close() {
 			try {
 				operator.close();
@@ -645,6 +655,13 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			} else {
 				// randomly select an output
 				outputs[random.nextInt(outputs.length)].emitLatencyMarker(latencyMarker);
+			}
+		}
+
+		@Override
+		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+			for (Output<StreamRecord<T>> output : outputs) {
+				output.emitBoundedDelayMarker(delayMarker);
 			}
 		}
 

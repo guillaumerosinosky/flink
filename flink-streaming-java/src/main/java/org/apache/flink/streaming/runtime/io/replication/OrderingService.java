@@ -107,12 +107,18 @@ public class OrderingService<IN> implements StreamElementConsumer<StreamElement>
 			synchronized (lock) {
 				operator.processLatencyMarker(elem.asLatencyMarker());
 			}
-		} else {
+		} else if (elem.isRecord()) {
 			StreamRecord<IN> e = elem.asRecord();
 			synchronized (lock) {
 				recordsIn.inc();
+				// TODO: Thesis - Why am I setting the key context here?
+				//  Did I copy this from somewhere?
 				operator.setKeyContextElement1(e.asRecord());
 				operator.processElement(e.asRecord());
+			}
+		} else if (elem.isBoundedDelayMarker()) {
+			synchronized (lock) {
+				operator.processBoundedDelayMarker(elem.asBoundedDelayMarker());
 			}
 		}
 	}

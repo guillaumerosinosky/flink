@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Collector;
@@ -52,4 +53,6 @@ public interface Output<T> extends Collector<T> {
 	<X> void collect(OutputTag<X> outputTag, StreamRecord<X> record);
 
 	void emitLatencyMarker(LatencyMarker latencyMarker);
+
+	void emitBoundedDelayMarker(BoundedDelayMarker delayMarker);
 }

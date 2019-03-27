@@ -24,6 +24,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.BlockingQueueBroker;
+import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
@@ -116,6 +117,12 @@ public class StreamIterationTail<IN> extends OneInputStreamTask<IN, IN> {
 
 		@Override
 		public void emitLatencyMarker(LatencyMarker latencyMarker) {
+		}
+
+		// TODO: Thesis - This would be one of the things to consider
+		// 	when thinking about supporting iterations
+		@Override
+		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
 		}
 
 		@Override

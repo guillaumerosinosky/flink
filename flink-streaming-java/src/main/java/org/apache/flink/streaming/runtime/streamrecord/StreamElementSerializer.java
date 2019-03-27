@@ -57,6 +57,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 	private static final int TAG_WATERMARK = 2;
 	private static final int TAG_LATENCY_MARKER = 3;
 	private static final int TAG_STREAM_STATUS = 4;
+	private static final int TAG_BOUNDED_DELAY_MARKER = 5;
 
 
 	private final TypeSerializer<T> typeSerializer;
@@ -108,7 +109,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			StreamRecord<T> fromRecord = from.asRecord();
 			return fromRecord.copy(typeSerializer.copy(fromRecord.getValue()));
 		}
-		else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker()) {
+		else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker() || from.isBoundedDelayMarker()) {
 			// is immutable
 			return from;
 		}
@@ -126,8 +127,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			T valueCopy = typeSerializer.copy(fromRecord.getValue(), reuseRecord.getValue());
 			fromRecord.copyTo(valueCopy, reuseRecord);
 			return reuse;
-		}
-		else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker()) {
+		} else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker() || from.isBoundedDelayMarker()) {
 			// is immutable
 			return from;
 		}
@@ -162,12 +162,14 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeInt(source.readInt());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
-		}
-		else if (tag == TAG_LATENCY_MARKER) {
+		} else if (tag == TAG_LATENCY_MARKER) {
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeInt(source.readInt());
+			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
+		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 		} else {
@@ -212,6 +214,10 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(value.asLatencyMarker().getOperatorId().getLowerPart());
 			target.writeLong(value.asLatencyMarker().getOperatorId().getUpperPart());
 			target.writeInt(value.asLatencyMarker().getSubtaskIndex());
+			target.writeLong(value.getDeduplicationTimestamp());
+			target.writeLong(value.getSentTimestamp());
+		} else if (value.isBoundedDelayMarker()) {
+			target.write(TAG_BOUNDED_DELAY_MARKER);
 			target.writeLong(value.getDeduplicationTimestamp());
 			target.writeLong(value.getSentTimestamp());
 		} else {
@@ -260,6 +266,11 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			latencyMarker.setDeduplicationTimestamp(source.readLong());
 			latencyMarker.setSentTimestamp(source.readLong());
 			return latencyMarker;
+		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
+			BoundedDelayMarker b = new BoundedDelayMarker();
+			b.setDeduplicationTimestamp(source.readLong());
+			b.setSentTimestamp(source.readLong());
+			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
@@ -305,8 +316,12 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			latencyMarker.setDeduplicationTimestamp(source.readLong());
 			latencyMarker.setSentTimestamp(source.readLong());
 			return latencyMarker;
-		}
-		else {
+		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
+			BoundedDelayMarker b = new BoundedDelayMarker();
+			b.setDeduplicationTimestamp(source.readLong());
+			b.setSentTimestamp(source.readLong());
+			return b;
+		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
 	}
