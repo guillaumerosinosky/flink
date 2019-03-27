@@ -42,7 +42,6 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
-import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
@@ -202,7 +201,9 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		while (true) {
 			if (currentRecordDeserializer != null) {
 				DeserializationResult result;
-				if (currentChannel < numInputChannels1) {
+				boolean isFirstInput = currentChannel < numInputChannels1;
+
+				if (isFirstInput) {
 					result = currentRecordDeserializer.getNextRecord(deserializationDelegate1);
 				} else {
 					result = currentRecordDeserializer.getNextRecord(deserializationDelegate2);
@@ -214,58 +215,56 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				}
 
 				if (result.isFullRecord()) {
-					if (currentChannel < numInputChannels1) {
-						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
-						if (recordOrWatermark.isWatermark()) {
-							statusWatermarkValve1.inputWatermark(recordOrWatermark.asWatermark(), currentChannel);
-							continue;
-						}
-						else if (recordOrWatermark.isStreamStatus()) {
-							statusWatermarkValve1.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel);
-							continue;
-						}
-						else if (recordOrWatermark.isLatencyMarker()) {
-							synchronized (lock) {
-								streamOperator.processLatencyMarker1(recordOrWatermark.asLatencyMarker());
-							}
-							continue;
-						}
-						else {
-							StreamRecord<IN1> record = recordOrWatermark.asRecord();
-							synchronized (lock) {
-								numRecordsIn.inc();
-								streamOperator.setKeyContextElement1(record);
-								streamOperator.processElement1(record);
-							}
-							return true;
 
+					StreamElement element = (isFirstInput)
+						? deserializationDelegate1.getInstance()
+						: deserializationDelegate2.getInstance();
+
+					StatusWatermarkValve valve = (isFirstInput)
+						? statusWatermarkValve1
+						: statusWatermarkValve2;
+
+					int chan = (isFirstInput)
+						? currentChannel
+						: currentChannel - numInputChannels1;
+
+					if (element.isWatermark()) {
+						valve.inputWatermark(element.asWatermark(), chan);
+					} else if (element.isStreamStatus()) {
+						valve.inputStreamStatus(element.asStreamStatus(), chan);
+					} else if (element.isLatencyMarker()) {
+						if (isFirstInput) {
+							synchronized (lock) {
+								streamOperator.processLatencyMarker1(element.asLatencyMarker());
+							}
+						} else {
+							synchronized (lock) {
+								streamOperator.processLatencyMarker2(element.asLatencyMarker());
+							}
 						}
+					} else if (element.isRecord()) {
+
+						numRecordsIn.inc();
+
+						if (isFirstInput) {
+							synchronized (lock) {
+								streamOperator.setKeyContextElement1(element.asRecord());
+								streamOperator.processElement1(element.asRecord());
+							}
+						} else {
+							synchronized (lock) {
+								streamOperator.setKeyContextElement2(element.asRecord());
+								streamOperator.processElement2(element.asRecord());
+							}
+						}
+					} else {
+						throw new RuntimeException("Unsupported element type " + element);
 					}
-					else {
-						StreamElement recordOrWatermark = deserializationDelegate2.getInstance();
-						if (recordOrWatermark.isWatermark()) {
-							statusWatermarkValve2.inputWatermark(recordOrWatermark.asWatermark(), currentChannel - numInputChannels1);
-							continue;
-						}
-						else if (recordOrWatermark.isStreamStatus()) {
-							statusWatermarkValve2.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel - numInputChannels1);
-							continue;
-						}
-						else if (recordOrWatermark.isLatencyMarker()) {
-							synchronized (lock) {
-								streamOperator.processLatencyMarker2(recordOrWatermark.asLatencyMarker());
-							}
-							continue;
-						}
-						else {
-							StreamRecord<IN2> record = recordOrWatermark.asRecord();
-							synchronized (lock) {
-								numRecordsIn.inc();
-								streamOperator.setKeyContextElement2(record);
-								streamOperator.processElement2(record);
-							}
-							return true;
-						}
+
+					if (element.isRecord()) {
+						return true;
+					} else {
+						continue;
 					}
 				}
 			}
@@ -285,8 +284,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						throw new IOException("Unexpected event: " + event);
 					}
 				}
-			}
-			else {
+			} else {
 				isFinished = true;
 				if (!barrierHandler.isEmpty()) {
 					throw new IllegalStateException("Trailing data in checkpoint barrier handler.");
