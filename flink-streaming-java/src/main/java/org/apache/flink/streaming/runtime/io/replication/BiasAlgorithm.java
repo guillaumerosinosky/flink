@@ -1,5 +1,6 @@
 package org.apache.flink.streaming.runtime.io.replication;
 
+import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.util.Preconditions;
 
 import java.io.BufferedWriter;
@@ -11,7 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
-public final class BiasAlgorithm<T> extends Merger<T> {
+public final class BiasAlgorithm extends Chainable {
 
 	private final Queue<Enqueued>[] queues;
 
@@ -33,9 +34,7 @@ public final class BiasAlgorithm<T> extends Merger<T> {
 	private long deliverCount = 0;
 
 	@SuppressWarnings("unchecked")
-	public BiasAlgorithm(int numProducers, StreamElementConsumer consumer) {
-
-		super(consumer);
+	public BiasAlgorithm(int numProducers) {
 
 		this.queues = new Queue[numProducers];
 
@@ -54,9 +53,10 @@ public final class BiasAlgorithm<T> extends Merger<T> {
 	}
 
 	@Override
-	public void receive(T value, int channel, long timestamp) throws Exception {
+	public void accept(StreamElement value, int channel) throws Exception {
 		Preconditions.checkState(channel <= numProducers - 1, "Received message on channel %s, but max is %s", channel, numProducers - 1);
 
+		long timestamp = value.getSentTimestamp();
 		addToQueue(channel, timestamp, value);
 
 		while (true) {
@@ -94,7 +94,7 @@ public final class BiasAlgorithm<T> extends Merger<T> {
 		return idxMax;
 	}
 
-	private void addToQueue(int channel, long timestamp, T value) throws IOException {
+	private void addToQueue(int channel, long timestamp, StreamElement value) throws IOException {
 		Enqueued e = new Enqueued(timestamp, channel, value);
 		Queue<Enqueued> queue = this.queues[channel];
 
@@ -105,7 +105,11 @@ public final class BiasAlgorithm<T> extends Merger<T> {
 
 	private void deliver(Enqueued q) throws Exception {
 		last[q.channel] = q.timestamp;
-		deliver(q.value, q.channel);
+
+		if (this.hasNext()) {
+			this.getNext().accept(q.value, q.channel);
+		}
+
 		this.elemsInEpoch[q.channel]++;
 		this.deliverCount++;
 
@@ -140,7 +144,6 @@ public final class BiasAlgorithm<T> extends Merger<T> {
 	}
 
 	// TODO: Thesis - This implementation is not determinstic yet!
-	@Override
 	public void endOfStream() throws Exception {
 
 		b.flush();
@@ -169,11 +172,11 @@ public final class BiasAlgorithm<T> extends Merger<T> {
 
 	private class Enqueued {
 
-		private T value;
+		private StreamElement value;
 		private final long timestamp;
 		private final int channel;
 
-		Enqueued(long timestamp, int channel, T value) {
+		Enqueued(long timestamp, int channel, StreamElement value) {
 			this.channel = channel;
 			this.timestamp = timestamp;
 			this.value = value;

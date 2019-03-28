@@ -36,7 +36,12 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.replication.OrderingService;
+import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
+import org.apache.flink.streaming.runtime.io.replication.Chainable;
+import org.apache.flink.streaming.runtime.io.replication.Deduplication;
+import org.apache.flink.streaming.runtime.io.replication.LogicalChannelMapper;
+import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
+import org.apache.flink.streaming.runtime.io.replication.Utils;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -73,20 +78,13 @@ public class StreamInputProcessor<IN> {
 
 	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
 
-	private final OrderingService<IN> orderingService;
+	private final Chainable first;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
 
 	private final CheckpointBarrierHandler barrierHandler;
-
-	private final Object checkpointLock;
-
-	// ---------------- Status and Watermark Valve ------------------
-
-	/** Valve that controls how watermarks and stream statuses are forwarded. */
-	private StatusWatermarkValve statusWatermarkValve;
 
 	/** Number of input channels the valve needs to handle. */
 	private final int numInputChannels;
@@ -96,8 +94,6 @@ public class StreamInputProcessor<IN> {
 	 * the watermarks and watermark statuses to channel indexes of the valve.
 	 */
 	private int currentChannel = -1;
-
-	private final StreamStatusMaintainer streamStatusMaintainer;
 
 	private final OneInputStreamOperator<IN, ?> streamOperator;
 
@@ -119,12 +115,12 @@ public class StreamInputProcessor<IN> {
 		TaskIOMetricGroup metrics,
 		WatermarkGauge watermarkGauge) throws IOException {
 
+		checkNotNull(checkpointLock);
+
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
-
-		this.checkpointLock = checkNotNull(checkpointLock);
 
 		StreamElementSerializer<IN> ser = new StreamElementSerializer<>(inputSerializer);
 		this.deserializationDelegate = new NonReusingDeserializationDelegate<>(ser);
@@ -139,20 +135,21 @@ public class StreamInputProcessor<IN> {
 
 		this.numInputChannels = inputGate.getNumberOfInputChannels();
 
-		this.streamStatusMaintainer = checkNotNull(streamStatusMaintainer);
 		this.streamOperator = checkNotNull(streamOperator);
 
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
 
-		this.orderingService = new OrderingService<>(
-			streamOperator,
-			checkpointLock,
-			numInputChannels,
-			inputGate.getUpstreamReplicationFactor(),
-			// numInputChannels / inputGate.getUpstreamReplicationFactor(),
-			watermarkGauge,
-			streamStatusMaintainer
-		);
+		int numLogicalChannels = Utils.numLogicalChannels(inputGate.getUpstreamReplicationFactor());
+
+		this.first = new LogicalChannelMapper(inputGate.getUpstreamReplicationFactor());
+
+		first.setNext(new Deduplication(numLogicalChannels))
+			.setNext(new BiasAlgorithm(numLogicalChannels))
+			.setNext(new OneInputStreamOperatorAdapter(
+				this.streamOperator,
+				watermarkGauge, streamStatusMaintainer, numLogicalChannels,
+				checkpointLock
+			));
 	}
 
 	public boolean processInput() throws Exception {
@@ -176,9 +173,8 @@ public class StreamInputProcessor<IN> {
 					StreamElement element = deserializationDelegate.getInstance();
 					boolean isRecord = element.isRecord();
 
-					this.orderingService.process(element, currentChannel);
+					this.first.accept(element, currentChannel);
 
-					// TODO: This might be the wrong way around
 					if (isRecord) {
 						return true;
 					} else {
@@ -206,7 +202,7 @@ public class StreamInputProcessor<IN> {
 				if (!barrierHandler.isEmpty()) {
 					throw new IllegalStateException("Trailing data in checkpoint barrier handler.");
 				}
-				this.orderingService.endOfStream();
+				this.first.endOfStream();
 				return false;
 			}
 		}

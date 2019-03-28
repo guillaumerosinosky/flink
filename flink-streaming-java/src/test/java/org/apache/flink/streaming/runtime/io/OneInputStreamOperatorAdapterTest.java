@@ -20,10 +20,7 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
-import org.apache.flink.streaming.runtime.io.replication.Merger;
-import org.apache.flink.streaming.runtime.io.replication.OrderingService;
-import org.apache.flink.streaming.runtime.io.replication.StreamElementConsumer;
+import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -33,8 +30,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -42,12 +37,10 @@ import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class OrderingServiceTest {
+public class OneInputStreamOperatorAdapterTest {
 
 	private static final WatermarkGauge watermarkGauge = new WatermarkGauge();
 	private static final StreamStatusMaintainer streamStatusMaintainer = new StreamStatusMaintainer() {
@@ -71,37 +64,37 @@ public class OrderingServiceTest {
 
 		// actual channels:  | 0 |
 		// logical channels:   0
-		int numChannels = OrderingService.numLogicalChannels(1, new int[]{1});
+		int numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(1, new int[]{1});
 		Assert.assertEquals(1, numChannels);
 
 		// actual channels: | 0 1 |
 		// logical channels:   0
-		numChannels = OrderingService.numLogicalChannels(2, new int[]{2});
+		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(2, new int[]{2});
 		Assert.assertEquals(1, numChannels);
 
 		// actual channels: | 0 | 1 |
 		// logical channels:  0   1
-		numChannels = OrderingService.numLogicalChannels(2, new int[]{1, 1});
+		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(2, new int[]{1, 1});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 1 | 2 3 |
 		// logical channels:   0	 1
-		numChannels = OrderingService.numLogicalChannels(4, new int[]{2, 2});
+		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(4, new int[]{2, 2});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 | 1 2 |
 		// logical channels:  0    1
-		numChannels = OrderingService.numLogicalChannels(3, new int[]{1, 2});
+		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(3, new int[]{1, 2});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 1 | 2 |
 		// logical channels:   0	1
-		numChannels = OrderingService.numLogicalChannels(3, new int[]{2, 1});
+		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(3, new int[]{2, 1});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 1 | 2 | 3 4 5 6 |
 		// logical channels:   0	1	   2
-		numChannels = OrderingService.numLogicalChannels(3, new int[]{2, 1, 4});
+		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(3, new int[]{2, 1, 4});
 		Assert.assertEquals(3, numChannels);
 	}
 
@@ -109,76 +102,76 @@ public class OrderingServiceTest {
 	public void testLogicalChannel() {
 		// channels: | 0 |
 		// logical	   0
-		int channel = OrderingService.logicalChannel(0, new int[]{1});
+		int channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{1});
 		Assert.assertEquals(0, channel);
 
 
 		// actual channels:    0 1
 		// logical channels:    0
 		// replication factor [ 2 ]
-		channel = OrderingService.logicalChannel(0, new int[]{2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{2});
 		Assert.assertEquals(0, channel);
 
-		channel = OrderingService.logicalChannel(1, new int[]{2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(1, new int[]{2});
 		Assert.assertEquals(0, channel);
 
 		// actual channels:    0 1 | 2
 		// logical channels:    0    1
 		// replication factor [ 2  , 1 ]
-		channel = OrderingService.logicalChannel(0, new int[]{2, 1});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{2, 1});
 		Assert.assertEquals(0, channel);
 
-		channel = OrderingService.logicalChannel(1, new int[]{2, 1});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(1, new int[]{2, 1});
 		Assert.assertEquals(0, channel);
 
-		channel = OrderingService.logicalChannel(2, new int[]{2, 1});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(2, new int[]{2, 1});
 		Assert.assertEquals(1, channel);
 
 		// actual channels:     0 | 1 2
 		// logical channels:    0    1
 		// replication factor [ 1  , 2  ]
-		channel = OrderingService.logicalChannel(0, new int[]{1, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{1, 2});
 		Assert.assertEquals(0, channel);
 
-		channel = OrderingService.logicalChannel(1, new int[]{1, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(1, new int[]{1, 2});
 		Assert.assertEquals(1, channel);
 
-		channel = OrderingService.logicalChannel(2, new int[]{1, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(2, new int[]{1, 2});
 		Assert.assertEquals(1, channel);
 
 		// actual channels:     0 1 | 2 3
 		// logical channels:     0     1
 		// replication factor [  2  ,  2  ]
-		channel = OrderingService.logicalChannel(0, new int[]{2, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{2, 2});
 		Assert.assertEquals(0, channel);
 
-		channel = OrderingService.logicalChannel(1, new int[]{2, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(1, new int[]{2, 2});
 		Assert.assertEquals(0, channel);
 
-		channel = OrderingService.logicalChannel(2, new int[]{2, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(2, new int[]{2, 2});
 		Assert.assertEquals(1, channel);
 
-		channel = OrderingService.logicalChannel(3, new int[]{2, 2});
+		channel = OneInputStreamOperatorAdapter.logicalChannel(3, new int[]{2, 2});
 		Assert.assertEquals(1, channel);
 	}
 
 	@Test
 	public void testDeliversDeterministically() throws Exception {
-		Random r = new Random();
+		/*Random r = new Random();
 
 		int numActualChannels = 8;
 		int numLogicalChannels = 4;
 		int numOrderingServices = 4;
 		int numElementsTotal = 8000;
 
-		List<OrderingService> services = new LinkedList<>();
+		List<OneInputStreamOperatorAdapter> services = new LinkedList<>();
 		List<MockInputOperator> operators = new LinkedList<>();
 		List<Queue<StreamElement>[]> perServiceQueues = new LinkedList<>();
 
 		// setup services, operators and queues
 		for (int i = 0; i < numOrderingServices; i++) {
 			MockInputOperator mo = new MockInputOperator();
-			OrderingService<Elem> o = new OrderingService<>(
+			OneInputStreamOperatorAdapter<Elem> o = new OneInputStreamOperatorAdapter<>(
 				mo,
 				new Object(),
 				numActualChannels,
@@ -255,7 +248,7 @@ public class OrderingServiceTest {
 			int commonPrefix = Math.min(a.size(), b.size());
 
 			Assert.assertEquals(a.subList(0, commonPrefix), b.subList(0, commonPrefix));
-		}
+		}*/
 	}
 
 
@@ -271,50 +264,6 @@ public class OrderingServiceTest {
 			this.received.add(element);
 		}
 	}
-
-	@Test
-	public void testPerformance() throws Exception {
-
-		BufferedWriter buf = new BufferedWriter(new FileWriter("/tmp/delivery-time.csv"));
-
-		int numProducers = 2;
-
-		Merger b = new BiasAlgorithm(numProducers, (StreamElementConsumer<Elem>) (elem, channel) -> {
-			long deliveredAt = System.currentTimeMillis();
-			long delivered = System.nanoTime();
-			long duration = delivered - elem.received;
-			buf.write(elem.channel + "," + elem.created + "," + elem.received + "," + deliveredAt + "," + duration + "\n");
-		});
-
-		buf.write(b.getClass().getName() + "\n");
-
-		BlockingQueue<Elem> queue = new LinkedBlockingQueue<>();
-
-		Random r = new Random();
-		for (int i = 0; i < numProducers; i++) {
-			Thread t = new Thread(new VariableProducer(queue, 0, constant(10)));
-			t.start();
-
-			Thread t1 = new Thread(new VariableProducer(queue, 1, constant(1000)));
-			t1.start();
-		}
-
-		AtomicBoolean stopped = new AtomicBoolean(false);
-
-		Executors.newScheduledThreadPool(1).schedule(() -> stopped.set(true), 10, TimeUnit.SECONDS);
-
-		while (!stopped.get() || !queue.isEmpty()) {
-			Elem e = queue.poll();
-			if (e != null) {
-				e.received = System.nanoTime();
-				b.receive(e, e.channel, e.created);
-			}
-		}
-
-		b.endOfStream();
-		buf.flush();
-	}
-
 	@Test
 	public void showGraph() {
 		for (int i = 0; i < 100; i++) {

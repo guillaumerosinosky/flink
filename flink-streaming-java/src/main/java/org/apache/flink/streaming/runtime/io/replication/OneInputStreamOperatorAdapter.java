@@ -33,8 +33,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -42,62 +40,44 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * @param <IN>
  */
-public class OrderingService<IN> implements StreamElementConsumer<StreamElement> {
+public class OneInputStreamOperatorAdapter<IN> extends Chainable {
 
-	private static final Logger LOG = LoggerFactory.getLogger(OrderingService.class);
+	private static final Logger LOG = LoggerFactory.getLogger(OneInputStreamOperatorAdapter.class);
 
 	private final OneInputStreamOperator<IN, ?> operator;
+	private final StatusWatermarkValve statusWatermarkValve;
+	private final Counter recordsIn;
 
 	private final Object lock;
 
-	private final StatusWatermarkValve statusWatermarkValve;
-
-	private final Deduplication deduplicator;
-	private final BiasAlgorithm merger;
-
-
-	private final int[] upstreamReplicationFactor;
-
-	private Counter recordsIn;
-
-	private void setupMetrics() {
-		if (recordsIn == null) {
-			try {
-				recordsIn = ((OperatorMetricGroup) operator.getMetricGroup()).getIOMetricGroup().getNumRecordsInCounter();
-			} catch (Exception e) {
-				LOG.warn("An exception occurred during the metrics setup.", e);
-				recordsIn = new SimpleCounter();
-			}
-		}
-	}
-
 	@SuppressWarnings({"unchecked"})
-	public OrderingService(
-		OneInputStreamOperator in,
-		Object lock,
-		int numActualChannels,
-		int[] upstreamReplicationFactor,
-		WatermarkGauge watermarkGauge,
-		StreamStatusMaintainer maintainer
+	public OneInputStreamOperatorAdapter(
+			OneInputStreamOperator in,
+			WatermarkGauge watermarkGauge,
+			StreamStatusMaintainer maintainer,
+			int logicalChannels,
+			Object lock
 	) {
-		this.upstreamReplicationFactor = upstreamReplicationFactor;
-		int logicalChannels = numLogicalChannels(numActualChannels, upstreamReplicationFactor);
-
-		LOG.info("Instantiating with {} actual channels mapped to {} logical channels", numActualChannels, logicalChannels);
 
 		this.operator = in;
 		this.lock = lock;
-//		this.replicationFactor = numActualChannels / logicalChannels;
-
-		this.deduplicator = new Deduplication(logicalChannels);
-		this.merger = new BiasAlgorithm(logicalChannels, this); // TODO: Thesis - Fix this (here goes the message generation rate)
 
 		ForwardingValveOutputHandler outputHandler = new ForwardingValveOutputHandler(operator, lock, watermarkGauge, maintainer);
 		this.statusWatermarkValve = new StatusWatermarkValve(logicalChannels, outputHandler);
 
-		setupMetrics();
+		this.recordsIn = setupMetrics();
 	}
 
+	private Counter setupMetrics() {
+		try {
+			return ((OperatorMetricGroup) operator.getMetricGroup()).getIOMetricGroup().getNumRecordsInCounter();
+		} catch (Exception e) {
+			LOG.warn("An exception occurred during the metrics setup.", e);
+			return new SimpleCounter();
+		}
+	}
+
+	@Override
 	public void accept(StreamElement elem, int logicalChannel) throws Exception {
 		if (elem.isWatermark()) {
 			statusWatermarkValve.inputWatermark(elem.asWatermark(), logicalChannel);
@@ -111,8 +91,6 @@ public class OrderingService<IN> implements StreamElementConsumer<StreamElement>
 			StreamRecord<IN> e = elem.asRecord();
 			synchronized (lock) {
 				recordsIn.inc();
-				// TODO: Thesis - Why am I setting the key context here?
-				//  Did I copy this from somewhere?
 				operator.setKeyContextElement1(e.asRecord());
 				operator.processElement(e.asRecord());
 			}
@@ -121,42 +99,6 @@ public class OrderingService<IN> implements StreamElementConsumer<StreamElement>
 				operator.processBoundedDelayMarker(elem.asBoundedDelayMarker());
 			}
 		}
-	}
-
-	public void process(StreamElement elem, int origin) throws Exception {
-
-		int channel = logicalChannel(origin, upstreamReplicationFactor);
-		LOG.info("Mapped from actual {} to logical {} with {}", origin, channel, Arrays.toString(upstreamReplicationFactor));
-
-		if (this.deduplicator.isDuplicate(elem, channel)) {
-			return;
-		}
-
-		this.merger.receive(elem, channel, elem.getSentTimestamp());
-	}
-
-	public void endOfStream() throws Exception {
-		this.merger.endOfStream();
-	}
-
-	// TODO: Naming
-	// TODO: This doesn't factor in the possible parallelism!!!!
-	public static int logicalChannel(int actualChannel, int[] replicationFactor) {
-		int replicationFactorOffset = 0;
-		for (int i = 0; i < replicationFactor.length; i++) {
-			if (actualChannel < replicationFactorOffset + replicationFactor[i]) {
-				LOG.info("Mapping from actual channel {} to logical channel {} with replication factors {}", actualChannel, i, Arrays.toString(replicationFactor));
-				return i;
-			}
-			replicationFactorOffset += replicationFactor[i];
-		}
-		// TODO: Thesis - Improve exception
-		throw new RuntimeException("Too big of an actual channel");
-	}
-
-	public static int numLogicalChannels(int numActualChannels, int[] replicationFactor) {
-		// TODO: Implement and test me!
-		return replicationFactor.length;
 	}
 
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {

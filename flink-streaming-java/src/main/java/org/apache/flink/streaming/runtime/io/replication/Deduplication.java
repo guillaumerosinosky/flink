@@ -4,16 +4,25 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
 import java.util.Arrays;
 
-public class Deduplication {
+public class Deduplication extends Chainable {
 
 	private long[] latestDeduplicationTimestamp;
 
-	public Deduplication(int numLogicalChannels) {
-		latestDeduplicationTimestamp = new long[numLogicalChannels];
+	public Deduplication(int numChannels) {
+		latestDeduplicationTimestamp = new long[numChannels];
 		Arrays.fill(latestDeduplicationTimestamp, -1);
 	}
 
-	public boolean isDuplicate(StreamElement elem, int channel) {
+	@Override
+	public void accept(StreamElement element, int channel) throws Exception {
+		if (!this.isDuplicate(element, channel)) {
+			if (this.hasNext()) {
+				this.getNext().accept(element, channel);
+			}
+		}
+	}
+
+	private boolean isDuplicate(StreamElement elem, int channel) {
 
 		long deduplicationTimestamp = elem.getDeduplicationTimestamp();
 
