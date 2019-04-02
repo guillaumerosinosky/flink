@@ -931,6 +931,7 @@ public class StreamTaskTest extends TestLogger {
 			Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
 			Collections.<InputGateDeploymentDescriptor>emptyList(),
 			0,
+			"",
 			mock(MemoryManager.class),
 			mock(IOManager.class),
 			network,
@@ -946,7 +947,7 @@ public class StreamTaskTest extends TestLogger {
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup(),
 			consumableNotifier,
 			partitionProducerStateChecker,
-			executor);
+			executor, null);
 	}
 
 	// ------------------------------------------------------------------------

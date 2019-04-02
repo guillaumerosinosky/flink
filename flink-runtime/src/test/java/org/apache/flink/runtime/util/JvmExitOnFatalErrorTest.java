@@ -204,6 +204,7 @@ public class JvmExitOnFatalErrorTest {
 						Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
 						Collections.<InputGateDeploymentDescriptor>emptyList(),
 						0,       // targetSlotNumber
+						"",
 						memoryManager,
 						ioManager,
 						networkEnvironment,
@@ -222,7 +223,7 @@ public class JvmExitOnFatalErrorTest {
 						UnregisteredMetricGroups.createUnregisteredTaskMetricGroup(),
 						new NoOpResultPartitionConsumableNotifier(),
 						new NoOpPartitionProducerStateChecker(),
-						executor);
+						executor, null);
 
 				System.err.println("starting task thread");
 

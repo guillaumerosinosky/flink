@@ -37,6 +37,7 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.types.SerializableOptional;
 import org.apache.flink.util.Preconditions;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -120,6 +121,11 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, Time timeout) {
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerAcceptInputOrdering(ExecutionAttemptID executionAttemptID, List<Integer> nextBatch, Time timeout) {
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 

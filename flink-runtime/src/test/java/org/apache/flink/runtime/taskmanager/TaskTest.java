@@ -1052,6 +1052,7 @@ public class TaskTest extends TestLogger {
 				Collections.emptyList(),
 				Collections.emptyList(),
 				0,
+				"",
 				mock(MemoryManager.class),
 				mock(IOManager.class),
 				networkEnvironment,
@@ -1067,7 +1068,7 @@ public class TaskTest extends TestLogger {
 				taskMetricGroup,
 				consumableNotifier,
 				partitionProducerStateChecker,
-				executor);
+				executor, null);
 		}
 	}
 

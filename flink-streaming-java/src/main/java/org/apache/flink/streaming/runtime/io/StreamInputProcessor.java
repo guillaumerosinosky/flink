@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.RecordDeserializer;
@@ -33,14 +34,18 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
+import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.Chainable;
 import org.apache.flink.streaming.runtime.io.replication.Deduplication;
+import org.apache.flink.streaming.runtime.io.replication.LeaderBasedReplication;
 import org.apache.flink.streaming.runtime.io.replication.LogicalChannelMapper;
 import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
+import org.apache.flink.streaming.runtime.io.replication.OrderBroadcaster;
+import org.apache.flink.streaming.runtime.io.replication.OrderBroadcasterImpl;
 import org.apache.flink.streaming.runtime.io.replication.Utils;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
@@ -50,10 +55,15 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.recipes.leader.LeaderSelector;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -80,6 +90,10 @@ public class StreamInputProcessor<IN> {
 
 	private final Chainable first;
 
+	private final LeaderBasedReplication inputOrdering;
+
+	private final CuratorFramework curator;
+
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
@@ -100,6 +114,7 @@ public class StreamInputProcessor<IN> {
 	// ---------------- Metrics ------------------
 
 	private boolean isFinished;
+	private final LeaderSelector leaderSelector;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -113,7 +128,11 @@ public class StreamInputProcessor<IN> {
 		StreamStatusMaintainer streamStatusMaintainer,
 		OneInputStreamOperator<IN, ?> streamOperator,
 		TaskIOMetricGroup metrics,
-		WatermarkGauge watermarkGauge) throws IOException {
+		WatermarkGauge watermarkGauge,
+		RpcService rpcService,
+		ExecutionAttemptID executionAttempt,
+		String replicaGroup
+	) throws Exception {
 
 		checkNotNull(checkpointLock);
 
@@ -143,8 +162,24 @@ public class StreamInputProcessor<IN> {
 
 		this.first = new LogicalChannelMapper(inputGate.getUpstreamReplicationFactor());
 
+		boolean useBias = false;
+
+		this.curator = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
+		OrderBroadcaster b = new OrderBroadcasterImpl(curator, rpcService, executionAttempt, replicaGroup);
+		LeaderBasedReplication leaderBasedReplication = new LeaderBasedReplication(numLogicalChannels, b, 200);
+
+		LOG.info("Setting up leader selection for replica group {}", replicaGroup);
+		leaderSelector = new LeaderSelector(curator, "/flink/leader/" + replicaGroup, leaderBasedReplication);
+		leaderSelector.start();
+		Chainable orderingAlgorithm = (useBias)
+			? new BiasAlgorithm(numLogicalChannels)
+			: leaderBasedReplication;
+
+		// TODO: Thesis - Fix this and allow BiasAlgorithm to work with it also
+		this.inputOrdering = (LeaderBasedReplication) orderingAlgorithm;
+
 		first.setNext(new Deduplication(numLogicalChannels))
-			.setNext(new BiasAlgorithm(numLogicalChannels))
+			.setNext(orderingAlgorithm)
 			.setNext(new OneInputStreamOperatorAdapter(
 				this.streamOperator,
 				watermarkGauge, streamStatusMaintainer, numLogicalChannels,
@@ -220,5 +255,11 @@ public class StreamInputProcessor<IN> {
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();
+		leaderSelector.close();
+		curator.close();
+	}
+
+	public void triggerAcceptInputOrdering(List<Integer> newBatch) throws Exception {
+		this.inputOrdering.acceptOrdering(newBatch);
 	}
 }

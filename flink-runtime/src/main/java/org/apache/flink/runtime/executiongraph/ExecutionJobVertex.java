@@ -48,6 +48,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstrain
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.taskmanager.ReplicationUtils;
 import org.apache.flink.types.Either;
 import org.apache.flink.util.OptionalFailure;
 import org.apache.flink.util.Preconditions;
@@ -282,11 +283,14 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		// create all task vertices
 		for (int subtaskIndex = 0; subtaskIndex < numExecutionVertices; subtaskIndex++) {
 			int replicaIndex = subtaskIndex % replicationFactor;
-
+			int operatorIndex = ReplicationUtils.calculateOperatorIndexForSubtask(subtaskIndex, replicationFactor);
+			String jobVertexId = this.jobVertex.getID().toString();
+			String replicaGroup = String.format("%s-%d", jobVertexId, operatorIndex);
 			ExecutionVertex vertex = new ExecutionVertex(
 					this,
-				subtaskIndex,
-				replicaIndex,
+					subtaskIndex,
+					replicaIndex,
+					replicaGroup,
 					producedDataSets,
 					timeout,
 					initialGlobalModVersion,

@@ -38,6 +38,7 @@ import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.types.SerializableOptional;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -146,6 +147,11 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 */
 	CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, @RpcTimeout Time timeout);
 
+	CompletableFuture<Acknowledge> triggerAcceptInputOrdering(
+		ExecutionAttemptID executionAttemptID,
+		List<Integer> nextBatch,
+		@RpcTimeout Time timeout
+	);
 	/**
 	 * Heartbeat request from the job manager.
 	 *

@@ -237,6 +237,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 				Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
 				Collections.<InputGateDeploymentDescriptor>emptyList(),
 				0,
+				"",
 				mock(MemoryManager.class),
 				mock(IOManager.class),
 				network,
@@ -256,7 +257,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup(),
 				new NoOpResultPartitionConsumableNotifier(),
 				mock(PartitionProducerStateChecker.class),
-				Executors.directExecutor());
+				Executors.directExecutor(), null);
 	}
 
 	// ------------------------------------------------------------------------

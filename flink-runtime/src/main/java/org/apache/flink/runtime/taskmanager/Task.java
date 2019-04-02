@@ -65,6 +65,7 @@ import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
@@ -86,6 +87,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -239,6 +241,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** atomic flag that makes sure the invokable is canceled exactly once upon error. */
 	private final AtomicBoolean invokableHasBeenCanceled;
 
+	private final RpcService rpcService;
+	private final String replicaGroup;
+
 	/** The invokable of this task, if initialized. All accesses must copy the reference and
 	 * check for null, as this field is cleared as part of the disposal logic. */
 	@Nullable
@@ -279,6 +284,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		int targetSlotNumber,
+		String replicaGroup,
 		MemoryManager memManager,
 		IOManager ioManager,
 		NetworkEnvironment networkEnvironment,
@@ -294,7 +300,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor) {
+		Executor executor,
+		RpcService rpcService
+	) {
+		this.replicaGroup = replicaGroup;
 
 		Preconditions.checkNotNull(jobInformation);
 		Preconditions.checkNotNull(taskInformation);
@@ -302,6 +311,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		Preconditions.checkArgument(0 <= attemptNumber, "The attempt number must be positive.");
 		Preconditions.checkArgument(0 <= targetSlotNumber, "The target slot number must be positive.");
+
+		this.rpcService = rpcService;
 
 		this.taskInfo = new TaskInfo(
 				taskInformation.getTaskName(),
@@ -677,7 +688,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				checkpointResponder,
 				taskManagerConfig,
 				metrics,
-				this);
+				rpcService,
+				replicaGroup,
+				this
+			);
 
 			// now load and instantiate the task's invokable code
 			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env);
@@ -1131,6 +1145,21 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	//  Notifications on the invokable
 	// ------------------------------------------------------------------------
 
+	public void triggerAcceptInputOrdering(List<Integer> nextBatch) {
+		final AbstractInvokable invokable = this.invokable;
+
+		if (executionState == ExecutionState.RUNNING && invokable != null) {
+			try {
+				invokable.triggerAcceptInputOrdering(nextBatch);
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		} else if (executionState != ExecutionState.RUNNING){
+			throw new RuntimeException("Cannot accept ordering when task is in state " + executionState);
+		} else if (invokable == null) {
+			throw new RuntimeException("Cannot accept ordering when invokable is null");
+		}
+	}
 	/**
 	 * Calls the invokable to trigger a checkpoint.
 	 *

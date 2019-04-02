@@ -43,6 +43,7 @@ import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.types.Record;
@@ -345,4 +346,16 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	public Optional<Throwable> getActualExternalFailureCause() {
 		return actualExternalFailureCause;
 	}
+
+	@Override
+	public RpcService getRpcService() {
+		return null;
+	}
+
+	@Override
+	public String getReplicaGroup() {
+		return null;
+	}
+
+
 }

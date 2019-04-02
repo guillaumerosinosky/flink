@@ -132,6 +132,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	/** The allocation ID of the slot in which the task shall be run. */
 	private final AllocationID allocationId;
+	private final String replicaGroup;
 
 	/** The task's index in the subtask group. */
 	private final int subtaskIndex;
@@ -173,6 +174,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			allocationId,
 			subtaskIndex,
 			0,
+			"replica-group-id",
 			attemptNumber,
 			targetSlotNumber,
 			taskRestore,
@@ -189,6 +191,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		AllocationID allocationId,
 		int subtaskIndex,
 		int replicaIndex,
+		String replicaGroup,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
@@ -204,6 +207,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
+		this.replicaGroup = replicaGroup;
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;
@@ -309,6 +313,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	public String getReplicaGroup() {
+		return replicaGroup;
 	}
 
 	/**

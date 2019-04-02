@@ -271,6 +271,7 @@ public class InterruptSensitiveRestoreTest {
 			Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
 			Collections.<InputGateDeploymentDescriptor>emptyList(),
 			0,
+			"",
 			mock(MemoryManager.class),
 			mock(IOManager.class),
 			networkEnvironment,
@@ -290,7 +291,7 @@ public class InterruptSensitiveRestoreTest {
 			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup(),
 			new NoOpResultPartitionConsumableNotifier(),
 			mock(PartitionProducerStateChecker.class),
-			mock(Executor.class));
+			mock(Executor.class), null);
 	}
 
 	// ------------------------------------------------------------------------

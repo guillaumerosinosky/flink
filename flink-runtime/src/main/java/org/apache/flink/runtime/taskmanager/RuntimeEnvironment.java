@@ -38,6 +38,7 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.state.TaskStateManager;
 
 import java.util.Map;
@@ -84,34 +85,38 @@ public class RuntimeEnvironment implements Environment {
 	private final TaskManagerRuntimeInfo taskManagerInfo;
 	private final TaskMetricGroup metrics;
 
+	private final RpcService rpcService;
+	private final String replicaGroup;
 	private final Task containingTask;
 
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
-			JobID jobId,
-			JobVertexID jobVertexId,
-			ExecutionAttemptID executionId,
-			ExecutionConfig executionConfig,
-			TaskInfo taskInfo,
-			Configuration jobConfiguration,
-			Configuration taskConfiguration,
-			ClassLoader userCodeClassLoader,
-			MemoryManager memManager,
-			IOManager ioManager,
-			BroadcastVariableManager bcVarManager,
-			TaskStateManager taskStateManager,
-			AccumulatorRegistry accumulatorRegistry,
-			TaskKvStateRegistry kvStateRegistry,
-			InputSplitProvider splitProvider,
-			Map<String, Future<Path>> distCacheEntries,
-			ResultPartitionWriter[] writers,
-			InputGate[] inputGates,
-			TaskEventDispatcher taskEventDispatcher,
-			CheckpointResponder checkpointResponder,
-			TaskManagerRuntimeInfo taskManagerInfo,
-			TaskMetricGroup metrics,
-			Task containingTask) {
+		JobID jobId,
+		JobVertexID jobVertexId,
+		ExecutionAttemptID executionId,
+		ExecutionConfig executionConfig,
+		TaskInfo taskInfo,
+		Configuration jobConfiguration,
+		Configuration taskConfiguration,
+		ClassLoader userCodeClassLoader,
+		MemoryManager memManager,
+		IOManager ioManager,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		AccumulatorRegistry accumulatorRegistry,
+		TaskKvStateRegistry kvStateRegistry,
+		InputSplitProvider splitProvider,
+		Map<String, Future<Path>> distCacheEntries,
+		ResultPartitionWriter[] writers,
+		InputGate[] inputGates,
+		TaskEventDispatcher taskEventDispatcher,
+		CheckpointResponder checkpointResponder,
+		TaskManagerRuntimeInfo taskManagerInfo,
+		TaskMetricGroup metrics,
+		RpcService rpcService,
+		String replicaGroup,
+		Task containingTask) {
 
 		this.jobId = checkNotNull(jobId);
 		this.jobVertexId = checkNotNull(jobVertexId);
@@ -134,6 +139,8 @@ public class RuntimeEnvironment implements Environment {
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
+		this.rpcService = rpcService;
+		this.replicaGroup = replicaGroup;
 		this.containingTask = containingTask;
 		this.metrics = metrics;
 	}
@@ -279,5 +286,15 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public void failExternally(Throwable cause) {
 		this.containingTask.failExternally(cause);
+	}
+
+	@Override
+	public RpcService getRpcService() {
+		return this.rpcService;
+	}
+
+	@Override
+	public String getReplicaGroup() {
+		return replicaGroup;
 	}
 }

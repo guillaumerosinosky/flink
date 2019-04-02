@@ -528,6 +528,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				tdd.getProducedPartitions(),
 				tdd.getInputGates(),
 				tdd.getTargetSlotNumber(),
+				tdd.getReplicaGroup(),
 				taskExecutorServices.getMemoryManager(),
 				taskExecutorServices.getIOManager(),
 				taskExecutorServices.getNetworkEnvironment(),
@@ -543,7 +544,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskMetricGroup,
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
-				getRpcService().getExecutor());
+				getRpcService().getExecutor(),
+				getRpcService());
 
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 
@@ -608,6 +610,21 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerAcceptInputOrdering(
+		ExecutionAttemptID executionAttemptID,
+		List<Integer> nextBatch,
+		Time timeout
+	) {
+
+		return getRpcService().execute(() -> {
+			// get task id
+			final Task task = taskSlotTable.getTask(executionAttemptID);
+			task.triggerAcceptInputOrdering(nextBatch);
+			return Acknowledge.get();
+		});
 	}
 
 	// ----------------------------------------------------------------------

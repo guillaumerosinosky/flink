@@ -96,6 +96,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final int replicaIndex;
 
+	private final String replicaGroup;
+
 	private final EvictingBoundedList<ArchivedExecution> priorExecutions;
 
 	private final Time timeout;
@@ -145,6 +147,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			jobVertex,
 			subTaskIndex,
 			replicaIndex,
+			"replica-group-id",
 			producedDataSets,
 			timeout,
 			1L,
@@ -168,6 +171,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		ExecutionJobVertex jobVertex,
 		int subTaskIndex,
 		int replicaIndex,
+		String replicaGroup,
 		IntermediateResult[] producedDataSets,
 		Time timeout,
 		long initialGlobalModVersion,
@@ -178,6 +182,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		this.jobVertex = jobVertex;
 		this.subTaskIndex = subTaskIndex;
 		this.replicaIndex = replicaIndex;
+		this.replicaGroup = replicaGroup;
 
 		this.taskNameWithSubtask = String.format("%s (%d/%d)",
 				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
@@ -378,6 +383,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	public Map<IntermediateResultPartitionID, IntermediateResultPartition> getProducedPartitions() {
 		return resultPartitions;
+	}
+
+	public String getReplicaGroup() {
+		return replicaGroup;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -910,6 +919,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			targetSlot.getAllocationId(),
 			getParallelSubtaskIndex(),
 			getReplicaIndex(),
+			getReplicaGroup(),
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,

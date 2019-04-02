@@ -31,6 +31,8 @@ import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 
 import javax.annotation.Nullable;
 
+import java.util.List;
+
 /**
  * A {@link StreamTask} for executing a {@link OneInputStreamOperator}.
  */
@@ -90,7 +92,11 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 					getStreamStatusMaintainer(),
 					this.headOperator,
 					getEnvironment().getMetricGroup().getIOMetricGroup(),
-					inputWatermarkGauge);
+					inputWatermarkGauge,
+					getEnvironment().getRpcService(),
+					getEnvironment().getExecutionId(),
+					getEnvironment().getReplicaGroup()
+			);
 		}
 		headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge);
 		// wrap watermark gauge since registered metrics must be unique
@@ -117,5 +123,10 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	@Override
 	protected void cancelTask() {
 		running = false;
+	}
+
+	@Override
+	public void triggerAcceptInputOrdering(List<Integer> newBatch) throws Exception {
+		this.inputProcessor.triggerAcceptInputOrdering(newBatch);
 	}
 }

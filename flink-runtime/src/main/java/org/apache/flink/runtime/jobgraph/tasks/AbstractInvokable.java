@@ -25,6 +25,8 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 
+import java.util.List;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -247,5 +249,9 @@ public abstract class AbstractInvokable {
 	 */
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		throw new UnsupportedOperationException(String.format("notifyCheckpointComplete not supported by %s", this.getClass().getName()));
+	}
+
+	public void triggerAcceptInputOrdering(List<Integer> nextBatch) throws Exception {
+		throw new UnsupportedOperationException(String.format("triggerAcceptInputOrdering not supported by %s", this.getClass().getName()));
 	}
 }
