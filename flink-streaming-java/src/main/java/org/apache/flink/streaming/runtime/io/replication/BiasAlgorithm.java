@@ -77,6 +77,11 @@ public final class BiasAlgorithm extends Chainable {
 
 		for (int i = 0; i < numProducers; i++) {
 			long rate = this.elemsInEpoch[i];
+
+			if (rate == 0) {
+				rate = 1;
+			}
+
 			this.bias[i] = slowestRate / (double) rate;
 			this.elemsInEpoch[i] = 0;
 		}
@@ -107,18 +112,13 @@ public final class BiasAlgorithm extends Chainable {
 		last[q.channel] = q.timestamp;
 
 		if (this.hasNext()) {
+			if (q.value.isBoundedDelayMarker()) {
+				newEpoch();
+			}
 			this.getNext().accept(q.value, q.channel);
 		}
 
 		this.elemsInEpoch[q.channel]++;
-		this.deliverCount++;
-
-		// TODO: Thesis - This should be adapted to have epochs either in the stream
-		// 	or to be not this arbitrary number that I chose here for testing
-		//  purposes.
-		if (this.deliverCount % 8000 == 0) {
-			this.newEpoch();
-		}
 	}
 
 	private int nextTurn() {
@@ -167,19 +167,6 @@ public final class BiasAlgorithm extends Chainable {
 			}
 
 			next.clear();
-		}
-	}
-
-	private class Enqueued {
-
-		private StreamElement value;
-		private final long timestamp;
-		private final int channel;
-
-		Enqueued(long timestamp, int channel, StreamElement value) {
-			this.channel = channel;
-			this.timestamp = timestamp;
-			this.value = value;
 		}
 	}
 

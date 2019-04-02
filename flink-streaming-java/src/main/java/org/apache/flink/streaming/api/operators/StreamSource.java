@@ -82,12 +82,15 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 				getRuntimeContext().getIndexOfThisSubtask());
 		}
 
-		IdleMarksEmitter<OUT> idleMarksEmitter = new IdleMarksEmitter<>(
-			collector,
-			1000
-		);
-
-		LOG.info("started Idle marks emitter");
+		IdleMarksEmitter<OUT> idleMarksEmitter = null;
+		if (getExecutionConfig().isIdleMarksEnabled()) {
+			LOG.info("Starting bounded delay emitter with interval 200ms");
+			idleMarksEmitter = new IdleMarksEmitter<>(
+				collector,
+				200,
+				lockingObject
+			);
+		}
 
 		final long watermarkInterval = getRuntimeContext().getExecutionConfig().getAutoWatermarkInterval();
 
@@ -112,9 +115,11 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 		} finally {
 			// make sure that the context is closed in any case
 			ctx.close();
-			idleMarksEmitter.close();
 			if (latencyEmitter != null) {
 				latencyEmitter.close();
+			}
+			if (idleMarksEmitter != null) {
+				idleMarksEmitter.close();
 			}
 		}
 	}
@@ -155,12 +160,15 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 
 		public IdleMarksEmitter(
 			final Output<StreamRecord<OUT>> output,
-			final long boundedIdlenessInterval
+			final long boundedIdlenessInterval,
+			final Object lock
 		) {
 
 			this.idleMarksTimer = Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
 				try {
-					output.emitBoundedDelayMarker(new BoundedDelayMarker());
+					synchronized (lock) {
+						output.emitBoundedDelayMarker(new BoundedDelayMarker());
+					}
 					LOG.info("next bounded delay marker");
 				} catch (Throwable t) {
 					LOG.warn("Error while emitting bounded delay marker. ", t);

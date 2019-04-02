@@ -178,6 +178,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private LinkedHashSet<Class<?>> registeredPojoTypes = new LinkedHashSet<>();
 
+	private boolean isIdleMarksEnabled = false;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -891,6 +893,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	@Internal
 	public void setFailTaskOnCheckpointError(boolean failTaskOnCheckpointError) {
 		this.failTaskOnCheckpointError = failTaskOnCheckpointError;
+	}
+
+	public boolean isIdleMarksEnabled() {
+		return this.isIdleMarksEnabled;
+	}
+
+	public void enableIdleMarks() {
+		this.isIdleMarksEnabled = true;
 	}
 
 	@Override
