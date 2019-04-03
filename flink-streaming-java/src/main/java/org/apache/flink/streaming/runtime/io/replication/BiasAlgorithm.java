@@ -72,8 +72,8 @@ public final class BiasAlgorithm extends Chainable {
 	}
 
 	public void newEpoch() throws Exception {
-		int slowestChannel = idxMax(this.elemsInEpoch);
-		long slowestRate = this.elemsInEpoch[slowestChannel];
+		int fastestChannel = idxMax(this.elemsInEpoch);
+		long fastestRate = this.elemsInEpoch[fastestChannel];
 
 		for (int i = 0; i < numProducers; i++) {
 			long rate = this.elemsInEpoch[i];
@@ -82,7 +82,7 @@ public final class BiasAlgorithm extends Chainable {
 				rate = 1;
 			}
 
-			this.bias[i] = slowestRate / (double) rate;
+			this.bias[i] = fastestRate / (double) rate;
 			this.elemsInEpoch[i] = 0;
 		}
 	}
