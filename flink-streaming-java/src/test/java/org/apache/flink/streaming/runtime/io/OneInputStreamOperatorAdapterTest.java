@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
+import org.apache.flink.streaming.runtime.io.replication.Utils;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -64,37 +65,37 @@ public class OneInputStreamOperatorAdapterTest {
 
 		// actual channels:  | 0 |
 		// logical channels:   0
-		int numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(1, new int[]{1});
+		int numChannels = Utils.numLogicalChannels(new int[]{1});
 		Assert.assertEquals(1, numChannels);
 
 		// actual channels: | 0 1 |
 		// logical channels:   0
-		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(2, new int[]{2});
+		numChannels = Utils.numLogicalChannels(new int[]{2});
 		Assert.assertEquals(1, numChannels);
 
 		// actual channels: | 0 | 1 |
 		// logical channels:  0   1
-		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(2, new int[]{1, 1});
+		numChannels = Utils.numLogicalChannels(new int[]{1, 1});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 1 | 2 3 |
 		// logical channels:   0	 1
-		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(4, new int[]{2, 2});
+		numChannels = Utils.numLogicalChannels(new int[]{2, 2});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 | 1 2 |
 		// logical channels:  0    1
-		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(3, new int[]{1, 2});
+		numChannels = Utils.numLogicalChannels(new int[]{1, 2});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 1 | 2 |
 		// logical channels:   0	1
-		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(3, new int[]{2, 1});
+		numChannels = Utils.numLogicalChannels(new int[]{2, 1});
 		Assert.assertEquals(2, numChannels);
 
 		// actual channels: | 0 1 | 2 | 3 4 5 6 |
 		// logical channels:   0	1	   2
-		numChannels = OneInputStreamOperatorAdapter.numLogicalChannels(3, new int[]{2, 1, 4});
+		numChannels = Utils.numLogicalChannels(new int[]{2, 1, 4});
 		Assert.assertEquals(3, numChannels);
 	}
 
@@ -102,7 +103,7 @@ public class OneInputStreamOperatorAdapterTest {
 	public void testLogicalChannel() {
 		// channels: | 0 |
 		// logical	   0
-		int channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{1});
+		/*int channel = OneInputStreamOperatorAdapter.logicalChannel(0, new int[]{1});
 		Assert.assertEquals(0, channel);
 
 
@@ -152,7 +153,7 @@ public class OneInputStreamOperatorAdapterTest {
 		Assert.assertEquals(1, channel);
 
 		channel = OneInputStreamOperatorAdapter.logicalChannel(3, new int[]{2, 2});
-		Assert.assertEquals(1, channel);
+		Assert.assertEquals(1, channel);*/
 	}
 
 	@Test
