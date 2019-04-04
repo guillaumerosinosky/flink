@@ -172,6 +172,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
@@ -220,6 +221,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.write(TAG_BOUNDED_DELAY_MARKER);
 			target.writeLong(value.getDeduplicationTimestamp());
 			target.writeLong(value.getSentTimestamp());
+			target.writeLong(value.asBoundedDelayMarker().getCreatedAt());
 		} else {
 			throw new RuntimeException();
 		}
@@ -270,6 +272,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			BoundedDelayMarker b = new BoundedDelayMarker();
 			b.setDeduplicationTimestamp(source.readLong());
 			b.setSentTimestamp(source.readLong());
+			b.setCreatedAt(source.readLong());
 			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
@@ -320,6 +323,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			BoundedDelayMarker b = new BoundedDelayMarker();
 			b.setDeduplicationTimestamp(source.readLong());
 			b.setSentTimestamp(source.readLong());
+			b.setCreatedAt(source.readLong());
 			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);

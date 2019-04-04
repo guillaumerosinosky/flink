@@ -167,7 +167,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			this.idleMarksTimer = Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
 				try {
 					synchronized (lock) {
-						output.emitBoundedDelayMarker(new BoundedDelayMarker());
+						output.emitBoundedDelayMarker(new BoundedDelayMarker(System.currentTimeMillis()));
 					}
 					LOG.info("next bounded delay marker");
 				} catch (Throwable t) {
