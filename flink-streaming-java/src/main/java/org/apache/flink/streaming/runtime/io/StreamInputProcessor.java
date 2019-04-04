@@ -39,6 +39,7 @@ import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.replication.BetterBiasAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithmMultithreaded;
 import org.apache.flink.streaming.runtime.io.replication.Chainable;
@@ -184,6 +185,8 @@ public class StreamInputProcessor<IN> {
 				return buildBiasChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
 			case BIAS_THREADED:
 				return buildBiasThreadedChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
+			case BETTER_BIAS:
+				return buildBetterBiasChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
 			default:
 				throw new RuntimeException("Invalid algorithm " + a);
 		}
@@ -245,6 +248,34 @@ public class StreamInputProcessor<IN> {
 		Deduplication dedup = new Deduplication(numLogicalChannels);
 
 		BiasAlgorithm biasAlgorithm = new BiasAlgorithm(numLogicalChannels);
+
+		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
+			this.streamOperator,
+			gauge,
+			maintainer,
+			numLogicalChannels,
+			checkpointLock
+		);
+
+		mapper.setNext(dedup)
+			.setNext(biasAlgorithm)
+			.setNext(adapter);
+
+		return mapper;
+	}
+
+	private Chainable buildBetterBiasChain(
+		int[] upstreamReplicationFactor,
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock
+	) {
+		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+		Deduplication dedup = new Deduplication(numLogicalChannels);
+
+		BetterBiasAlgorithm biasAlgorithm = new BetterBiasAlgorithm(numLogicalChannels);
 
 		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
 			this.streamOperator,

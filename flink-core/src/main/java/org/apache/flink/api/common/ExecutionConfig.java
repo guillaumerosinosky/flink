@@ -980,7 +980,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	}
 
 	public enum OrderingAlgorithm {
-		BIAS, BIAS_THREADED, LEADER
+		BIAS, BIAS_THREADED, LEADER, BETTER_BIAS, LEADER_KAFKA
 	}
 
 
