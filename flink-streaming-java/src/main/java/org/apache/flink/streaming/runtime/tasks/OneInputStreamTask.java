@@ -95,7 +95,8 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 					inputWatermarkGauge,
 					getEnvironment().getRpcService(),
 					getEnvironment().getExecutionId(),
-					getEnvironment().getReplicaGroup()
+					getEnvironment().getReplicaGroup(),
+					getEnvironment().getExecutionConfig()
 			);
 		}
 		headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge);

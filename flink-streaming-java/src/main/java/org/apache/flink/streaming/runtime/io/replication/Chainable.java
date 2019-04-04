@@ -2,7 +2,7 @@ package org.apache.flink.streaming.runtime.io.replication;
 
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
-public abstract class Chainable {
+public abstract class Chainable implements AutoCloseable {
 
 	private Chainable next;
 
@@ -23,5 +23,16 @@ public abstract class Chainable {
 
 	public void endOfStream() throws Exception {
 
+	}
+
+	public final void closeAll() throws Exception {
+		if (this.hasNext()) {
+			this.getNext().closeAll();
+		}
+		this.close();
+	}
+
+	@Override
+	public void close() throws Exception{
 	}
 }

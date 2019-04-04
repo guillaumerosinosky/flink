@@ -180,6 +180,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private boolean isIdleMarksEnabled = false;
 
+	private OrderingAlgorithm orderingAlgorithm = OrderingAlgorithm.BIAS_THREADED;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -967,6 +969,18 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	@Internal
 	public ArchivedExecutionConfig archive() {
 		return new ArchivedExecutionConfig(this);
+	}
+
+	public OrderingAlgorithm getOrderingAlgorithm() {
+		return orderingAlgorithm;
+	}
+
+	public void setOrderingAlgorithm(OrderingAlgorithm orderingAlgorithm) {
+		this.orderingAlgorithm = orderingAlgorithm;
+	}
+
+	public enum OrderingAlgorithm {
+		BIAS, BIAS_THREADED, LEADER
 	}
 
 

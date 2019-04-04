@@ -2,6 +2,8 @@ package org.apache.flink.streaming.runtime.io.replication;
 
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
+import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
+
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.leader.CancelLeadershipException;
 import org.apache.curator.framework.recipes.leader.LeaderSelectorListener;
@@ -31,6 +33,7 @@ public class LeaderBasedReplication extends Chainable implements LeaderSelectorL
 
 	private volatile boolean hasFailed;
 	private volatile boolean stopProcessor;
+	private List<AutoCloseable> closables = new LinkedList<>();
 
 	@SuppressWarnings("unchecked")
 	public LeaderBasedReplication(
@@ -139,7 +142,15 @@ public class LeaderBasedReplication extends Chainable implements LeaderSelectorL
 		}
 	}
 
-	public void close() {
+	@Override
+	public void close() throws Exception {
 		this.stopProcessor = true;
+		for (AutoCloseable closable : this.closables) {
+			closable.close();
+		}
+	}
+
+	public void addCloseables(AutoCloseable... c) {
+		this.closables.addAll(Lists.newArrayList(c));
 	}
 }

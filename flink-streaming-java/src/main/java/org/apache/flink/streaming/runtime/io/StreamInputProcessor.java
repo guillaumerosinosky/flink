@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.event.AbstractEvent;
@@ -39,6 +40,7 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
+import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithmMultithreaded;
 import org.apache.flink.streaming.runtime.io.replication.Chainable;
 import org.apache.flink.streaming.runtime.io.replication.Deduplication;
 import org.apache.flink.streaming.runtime.io.replication.LeaderBasedReplication;
@@ -90,18 +92,11 @@ public class StreamInputProcessor<IN> {
 
 	private final Chainable first;
 
-	private final LeaderBasedReplication inputOrdering;
-
-	private final CuratorFramework curator;
-
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
 
 	private final CheckpointBarrierHandler barrierHandler;
-
-	/** Number of input channels the valve needs to handle. */
-	private final int numInputChannels;
 
 	/**
 	 * The channel from which a buffer came, tracked so that we can appropriately map
@@ -114,7 +109,8 @@ public class StreamInputProcessor<IN> {
 	// ---------------- Metrics ------------------
 
 	private boolean isFinished;
-	private final LeaderSelector leaderSelector;
+
+	private LeaderBasedReplication inputOrdering;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -131,7 +127,8 @@ public class StreamInputProcessor<IN> {
 		WatermarkGauge watermarkGauge,
 		RpcService rpcService,
 		ExecutionAttemptID executionAttempt,
-		String replicaGroup
+		String replicaGroup,
+		ExecutionConfig executionConfig
 	) throws Exception {
 
 		checkNotNull(checkpointLock);
@@ -152,39 +149,144 @@ public class StreamInputProcessor<IN> {
 				ioManager.getSpillingDirectoriesPaths());
 		}
 
-		this.numInputChannels = inputGate.getNumberOfInputChannels();
-
 		this.streamOperator = checkNotNull(streamOperator);
 
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
 
-		int numLogicalChannels = Utils.numLogicalChannels(inputGate.getUpstreamReplicationFactor());
+		ExecutionConfig.OrderingAlgorithm a = executionConfig.getOrderingAlgorithm();
 
-		this.first = new LogicalChannelMapper(inputGate.getUpstreamReplicationFactor());
+		this.first = buildProcessingStack(
+			a,
+			inputGate.getUpstreamReplicationFactor(),
+			watermarkGauge,
+			streamStatusMaintainer,
+			checkpointLock,
+			rpcService,
+			replicaGroup,
+			executionAttempt
+		);
+	}
 
-		boolean useBias = false;
+	public Chainable buildProcessingStack(
+		ExecutionConfig.OrderingAlgorithm a,
+		int[] upstreamReplicationFactor,
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock,
+		RpcService rpcService,
+		String replicaGroup,
+		ExecutionAttemptID executionAttempt
+	) throws Exception {
+		switch (a) {
+			case LEADER:
+				return buildLeaderChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock, rpcService, replicaGroup, executionAttempt);
+			case BIAS:
+				return buildBiasChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
+			case BIAS_THREADED:
+				return buildBiasThreadedChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
+			default:
+				throw new RuntimeException("Invalid algorithm " + a);
+		}
+	}
 
-		this.curator = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
-		OrderBroadcaster b = new OrderBroadcasterImpl(curator, rpcService, executionAttempt, replicaGroup);
+	private Chainable buildLeaderChain(
+		int[] upstreamReplicationFactor,
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock,
+		RpcService rpcService,
+		String replicaGroup,
+		ExecutionAttemptID executionAttempt
+	) throws Exception {
+		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+		Deduplication dedup = new Deduplication(numLogicalChannels);
+
+		// make those this parts of the object b.c. I don't think the stream input processor should be responsible for closing them!
+		CuratorFramework client = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
+		OrderBroadcaster b = new OrderBroadcasterImpl(client, rpcService, executionAttempt, replicaGroup);
 		LeaderBasedReplication leaderBasedReplication = new LeaderBasedReplication(numLogicalChannels, b, 200);
 
+		// this is kind of an ugly sideeffect but needed for rpc calls
+		this.inputOrdering = leaderBasedReplication;
+
 		LOG.info("Setting up leader selection for replica group {}", replicaGroup);
-		leaderSelector = new LeaderSelector(curator, "/flink/leader/" + replicaGroup, leaderBasedReplication);
+		LeaderSelector leaderSelector = new LeaderSelector(client, "/flink/leader/" + replicaGroup, leaderBasedReplication);
 		leaderSelector.start();
-		Chainable orderingAlgorithm = (useBias)
-			? new BiasAlgorithm(numLogicalChannels)
-			: leaderBasedReplication;
 
-		// TODO: Thesis - Fix this and allow BiasAlgorithm to work with it also
-		this.inputOrdering = (LeaderBasedReplication) orderingAlgorithm;
+		leaderBasedReplication.addCloseables(client, leaderSelector);
 
-		first.setNext(new Deduplication(numLogicalChannels))
-			.setNext(orderingAlgorithm)
-			.setNext(new OneInputStreamOperatorAdapter(
-				this.streamOperator,
-				watermarkGauge, streamStatusMaintainer, numLogicalChannels,
-				checkpointLock
-			));
+		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
+			this.streamOperator,
+			gauge,
+			maintainer,
+			numLogicalChannels,
+			checkpointLock
+		);
+
+		mapper
+			.setNext(dedup)
+			.setNext(leaderBasedReplication)
+			.setNext(adapter);
+
+		return mapper;
+	}
+
+	private Chainable buildBiasChain(
+		int[] upstreamReplicationFactor,
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock
+	) {
+		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+		Deduplication dedup = new Deduplication(numLogicalChannels);
+
+		BiasAlgorithm biasAlgorithm = new BiasAlgorithm(numLogicalChannels);
+
+		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
+			this.streamOperator,
+			gauge,
+			maintainer,
+			numLogicalChannels,
+			checkpointLock
+		);
+
+		mapper.setNext(dedup)
+			.setNext(biasAlgorithm)
+			.setNext(adapter);
+
+		return mapper;
+	}
+
+	private Chainable buildBiasThreadedChain(
+		int[] upstreamReplicationFactor,
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock
+	) {
+		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+		Deduplication dedup = new Deduplication(numLogicalChannels);
+
+		BiasAlgorithmMultithreaded biasAlgorithm = new BiasAlgorithmMultithreaded(numLogicalChannels);
+
+		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
+			this.streamOperator,
+			gauge,
+			maintainer,
+			numLogicalChannels,
+			checkpointLock
+		);
+
+		mapper.setNext(dedup)
+			.setNext(biasAlgorithm)
+			.setNext(adapter);
+
+		return mapper;
 	}
 
 	public boolean processInput() throws Exception {
@@ -243,7 +345,7 @@ public class StreamInputProcessor<IN> {
 		}
 	}
 
-	public void cleanup() throws IOException {
+	public void cleanup() throws Exception {
 		// clear the buffers first. this part should not ever fail
 		for (RecordDeserializer<?> deserializer : recordDeserializers) {
 			Buffer buffer = deserializer.getCurrentBuffer();
@@ -255,11 +357,15 @@ public class StreamInputProcessor<IN> {
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();
-		leaderSelector.close();
-		curator.close();
+		this.first.closeAll();
 	}
 
 	public void triggerAcceptInputOrdering(List<Integer> newBatch) throws Exception {
-		this.inputOrdering.acceptOrdering(newBatch);
+		if (this.inputOrdering != null) {
+			this.inputOrdering.acceptOrdering(newBatch);
+		} else {
+			throw new RuntimeException("Current configuration does not support broadcasting of input ordering!");
+		}
+
 	}
 }
