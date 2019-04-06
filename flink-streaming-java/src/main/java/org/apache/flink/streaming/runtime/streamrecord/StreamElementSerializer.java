@@ -173,6 +173,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
@@ -222,6 +223,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(value.getDeduplicationTimestamp());
 			target.writeLong(value.getSentTimestamp());
 			target.writeLong(value.asBoundedDelayMarker().getCreatedAt());
+			target.writeLong(value.asBoundedDelayMarker().getEpoch());
 		} else {
 			throw new RuntimeException();
 		}
@@ -273,6 +275,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			b.setDeduplicationTimestamp(source.readLong());
 			b.setSentTimestamp(source.readLong());
 			b.setCreatedAt(source.readLong());
+			b.setEpoch(source.readLong());
 			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
@@ -324,6 +327,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			b.setDeduplicationTimestamp(source.readLong());
 			b.setSentTimestamp(source.readLong());
 			b.setCreatedAt(source.readLong());
+			b.setEpoch(source.readLong());
 			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
