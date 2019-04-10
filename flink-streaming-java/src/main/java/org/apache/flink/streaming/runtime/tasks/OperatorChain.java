@@ -128,6 +128,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				StreamEdge outEdge = outEdgesInOrder.get(i);
 
 				RecordWriterOutput<?> streamOutput = createStreamOutput(
+					containingTask,
 					streamRecordWriters.get(i),
 					outEdge,
 					chainedConfigs.get(outEdge.getSourceId()),
@@ -417,7 +418,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			outSerializer = upStreamConfig.getTypeSerializerOut(taskEnvironment.getUserClassLoader());
 		}
 
-		return new RecordWriterOutput<>(streamRecordWriter, outSerializer, sideOutputTag, this, this.isSource);
+		return new RecordWriterOutput<OUT>(containingTask, streamRecordWriter, outSerializer, sideOutputTag, this, this.isSource);
 	}
 
 	// ------------------------------------------------------------------------

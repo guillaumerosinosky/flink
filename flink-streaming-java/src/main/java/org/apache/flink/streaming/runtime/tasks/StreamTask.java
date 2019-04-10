@@ -179,6 +179,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
+	private long outTs;
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -460,6 +462,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		if (!asyncOperationsThreadPool.isShutdown()) {
 			asyncOperationsThreadPool.shutdownNow();
 		}
+	}
+
+	public long getOutTs() {
+		return this.outTs;
+	}
+
+	public void setOutTs(long outTs) {
+		this.outTs = outTs;
 	}
 
 	/**

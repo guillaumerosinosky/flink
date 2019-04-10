@@ -25,6 +25,7 @@ import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.replication.MonotonicWallclockTime;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
@@ -34,7 +35,9 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
 import org.apache.flink.streaming.runtime.tasks.OperatorChain;
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.OutputTag;
+import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 
@@ -60,14 +63,21 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	private int lastDedupTs;
 
+	private long previousSentTs;
+
+	private StreamTask containingTask;
+
 	@SuppressWarnings("unchecked")
 	public RecordWriterOutput(
+		StreamTask containingTask,
 		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
 		TypeSerializer<OUT> outSerializer,
 		OutputTag outputTag,
 		StreamStatusProvider streamStatusProvider,
 		boolean isSource
 	) {
+
+		this.containingTask = containingTask;
 
 		checkNotNull(recordWriter);
 		this.outputTag = outputTag;
@@ -111,14 +121,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	private <X> void pushToRecordWriter(StreamRecord<X> record) {
-
-		if (this.isSource) {
-			record.setSentTimestamp(System.currentTimeMillis());
-		}
-
-		record.setDeduplicationTimestamp(++lastDedupTs);
-
-		serializationDelegate.setInstance(record);
+		setup(record);
 
 		try {
 			recordWriter.emit(serializationDelegate);
@@ -130,14 +133,9 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	@Override
 	public void emitWatermark(Watermark mark) {
-
-		if (this.isSource) {
-			mark.setSentTimestamp(System.currentTimeMillis());
-		}
-		mark.setDeduplicationTimestamp(++lastDedupTs);
+		setup(mark);
 
 		watermarkGauge.setCurrentWatermark(mark.getTimestamp());
-		serializationDelegate.setInstance(mark);
 
 		if (streamStatusProvider.getStreamStatus().isActive()) {
 			try {
@@ -149,13 +147,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	public void emitStreamStatus(StreamStatus streamStatus) {
-
-		if (this.isSource) {
-			streamStatus.setSentTimestamp(System.currentTimeMillis());
-		}
-		streamStatus.setDeduplicationTimestamp(++lastDedupTs);
-
-		serializationDelegate.setInstance(streamStatus);
+		setup(streamStatus);
 
 		try {
 			recordWriter.broadcastEmit(serializationDelegate);
@@ -167,30 +159,18 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	@Override
 	public void emitLatencyMarker(LatencyMarker latencyMarker) {
-
-		if (this.isSource) {
-			latencyMarker.setSentTimestamp(System.currentTimeMillis());
-		}
-		latencyMarker.setDeduplicationTimestamp(++lastDedupTs);
-
-		serializationDelegate.setInstance(latencyMarker);
+		setup(latencyMarker);
 
 		try {
 			recordWriter.randomEmit(serializationDelegate);
-		}
-		catch (Exception e) {
+		} catch (Exception e) {
 			throw new RuntimeException(e.getMessage(), e);
 		}
 	}
 
 	@Override
 	public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
-		if (this.isSource) {
-			delayMarker.setSentTimestamp(System.currentTimeMillis());
-		}
-		delayMarker.setDeduplicationTimestamp(++lastDedupTs);
-
-		serializationDelegate.setInstance(delayMarker);
+		setup(delayMarker);
 
 		try {
 			// TODO: Thesis - Is broadcast really the right solution here?
@@ -199,6 +179,26 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		} catch (Exception e) {
 			throw new RuntimeException(e.getMessage(), e);
 		}
+	}
+
+	private void setup(StreamElement element) {
+		if (this.isSource) {
+			long nextSentTs = MonotonicWallclockTime.getNanos();
+			element.setSentTimestamp(nextSentTs);
+			Preconditions.checkState(previousSentTs < nextSentTs, "timestamps for sentTs are not strictly monotonic");
+			previousSentTs = nextSentTs;
+		} else {
+			long out = this.containingTask.getOutTs();
+			if (out <= previousSentTs) {
+				out = previousSentTs + 1;
+			}
+			element.setSentTimestamp(out);
+			previousSentTs = out;
+		}
+
+		element.setDeduplicationTimestamp(++lastDedupTs);
+
+		serializationDelegate.setInstance(element);
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException {

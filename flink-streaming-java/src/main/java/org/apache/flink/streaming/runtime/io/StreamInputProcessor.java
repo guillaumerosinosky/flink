@@ -66,7 +66,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -92,6 +95,7 @@ public class StreamInputProcessor<IN> {
 	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
 
 	private final Chainable first;
+	private final StreamTask<?, ?> checkpointedTask;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
@@ -131,6 +135,7 @@ public class StreamInputProcessor<IN> {
 		String replicaGroup,
 		ExecutionConfig executionConfig
 	) throws Exception {
+		this.checkpointedTask = checkpointedTask;
 
 		checkNotNull(checkpointLock);
 
@@ -287,9 +292,33 @@ public class StreamInputProcessor<IN> {
 
 		mapper.setNext(dedup)
 			.setNext(biasAlgorithm)
+			.setNext(new OutTsUpdater(checkpointedTask))
 			.setNext(adapter);
 
 		return mapper;
+	}
+
+	private static class OutTsUpdater extends Chainable {
+
+		private final StreamTask task;
+		Map<Integer, Long> sentTs;
+
+		OutTsUpdater(StreamTask task) {
+			this.task = task;
+			sentTs = new HashMap<>();
+		}
+
+
+		@Override
+		public void accept(StreamElement element, int channel) throws Exception {
+			long ts = element.getSentTimestamp();
+			sentTs.put(channel, ts);
+			long max = Collections.max(sentTs.values());
+			task.setOutTs(max);
+			if (this.hasNext()) {
+				this.getNext().accept(element, channel);
+			}
+		}
 	}
 
 	private Chainable buildBiasThreadedChain(
