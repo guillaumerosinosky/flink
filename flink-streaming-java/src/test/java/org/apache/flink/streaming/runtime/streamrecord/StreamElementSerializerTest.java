@@ -93,6 +93,28 @@ public class StreamElementSerializerTest {
 
 		LatencyMarker latencyMarker = new LatencyMarker(System.currentTimeMillis(), new OperatorID(-1, -1), 1);
 		assertEquals(latencyMarker, serializeAndDeserialize(latencyMarker, serializer));
+
+		EndOfEpochMarker m = new EndOfEpochMarker();
+		m.setPreviousTimestamp(System.nanoTime());
+		m.setCurrentTimestamp(System.nanoTime());
+		m.setEpoch(1234);
+		m.setDeduplicationTimestamp(10);
+		EndOfEpochMarker n = serializeAndDeserialize(m, serializer);
+
+		assertEquals(m.getCurrentTs(), n.getCurrentTs());
+		assertEquals(m.getPreviousTs(), n.getPreviousTs());
+		assertEquals(m.getEpoch(), n.getEpoch());
+
+		StreamRecord<String> s1 = new StreamRecord<>("Hi");
+		s1.setPreviousTimestamp(System.nanoTime());
+		s1.setCurrentTimestamp(System.nanoTime());
+		s1.setEpoch(123);
+		m.setDeduplicationTimestamp(0);
+		StreamRecord s2 = serializeAndDeserialize(s1, serializer);
+
+		assertEquals(s1.getCurrentTs(), s2.getCurrentTs());
+		assertEquals(s1.getPreviousTs(), s2.getPreviousTs());
+		assertEquals(s1.getEpoch(), s2.getEpoch());
 	}
 
 	@SuppressWarnings("unchecked")

@@ -53,7 +53,7 @@ public class BetterBiasAlgorithm extends Chainable {
 	public void accept(StreamElement element, int channel) throws Exception {
 
 		long epoch, curr, prev;
-		epoch = currentEpochAtChannel[channel];
+		epoch = element.getEpoch();
 		curr = element.getCurrentTs(); //  - epochStart[channel];
 		prev = element.getPreviousTs(); // - epochStart[channel];
 
@@ -101,8 +101,11 @@ public class BetterBiasAlgorithm extends Chainable {
 
 		if (element.isEndOfEpochMarker()) {
 
-			long newEpoch = element.asEndOfEpochMarker().getEpoch() + 1;
-			long oldEpoch = currentEpochAtChannel[channel];
+			epochStart[channel] = element.getCurrentTs();
+
+			final long newEpoch = element.getEpoch() + 1;
+
+			final long oldEpoch = currentEpochAtChannel[channel];
 
 			// sanity check
 			if (element.asEndOfEpochMarker().getEpoch() == -1) {

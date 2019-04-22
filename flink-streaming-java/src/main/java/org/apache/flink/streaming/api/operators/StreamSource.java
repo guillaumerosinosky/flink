@@ -158,7 +158,6 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 	private static class IdleMarksEmitter<OUT> {
 
 		private final ScheduledFuture<?> idleMarksTimer;
-		private long epoch = 0;
 
 		public IdleMarksEmitter(
 			final Output<StreamRecord<OUT>> output,
@@ -169,14 +168,12 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			this.idleMarksTimer = Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
 				try {
 					synchronized (lock) {
-						EndOfEpochMarker marker = new EndOfEpochMarker(epoch);
+						EndOfEpochMarker marker = new EndOfEpochMarker();
 
 						marker.setPreviousTimestamp(Long.MAX_VALUE);
 						marker.setCurrentTimestamp(Long.MAX_VALUE);
 
 						output.emitBoundedDelayMarker(marker);
-
-						epoch++;
 					}
 				} catch (Throwable t) {
 					LOG.warn("Error while emitting bounded delay marker. ", t);

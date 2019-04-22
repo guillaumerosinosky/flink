@@ -67,6 +67,8 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	private StreamTask containingTask;
 
+	private long currentEpoch = 0;
+
 	@SuppressWarnings("unchecked")
 	public RecordWriterOutput(
 		StreamTask containingTask,
@@ -185,12 +187,17 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		if (element.isEndOfEpochMarker()) {
 			element.setPreviousTimestamp(Long.MAX_VALUE);
 			element.setCurrentTimestamp(Long.MAX_VALUE);
+			element.setEpoch(currentEpoch);
+			currentEpoch++;
 		} else if (this.isSource) {
 			long nextSentTs = MonotonicWallclockTime.getNanos();
 
 			element.setCurrentTimestamp(nextSentTs);
 			element.setPreviousTimestamp(previousSentTs);
+			element.setEpoch(currentEpoch);
+
 			Preconditions.checkState(previousSentTs < nextSentTs, "timestamps for sentTs are not strictly monotonic");
+
 			previousSentTs = nextSentTs;
 
 		} else {
@@ -200,6 +207,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 			}
 			element.setCurrentTimestamp(out);
 			element.setPreviousTimestamp(previousSentTs);
+			element.setEpoch(currentEpoch);
 			previousSentTs = out;
 		}
 

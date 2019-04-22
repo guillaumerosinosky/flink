@@ -31,6 +31,7 @@ public abstract class StreamElement {
 	private long deduplicationTimestamp = -1;
 	private long currentTs = -1;
 	private long previousTs = -1;
+	private long epoch = -1;
 
 	/**
 	 * Checks whether this element is a watermark.
@@ -131,5 +132,13 @@ public abstract class StreamElement {
 
 	public long getPreviousTs() {
 		return previousTs;
+	}
+
+	public void setEpoch(long epoch) {
+		this.epoch = epoch;
+	}
+
+	public long getEpoch() {
+		return this.epoch;
 	}
 }
