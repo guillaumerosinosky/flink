@@ -56,7 +56,7 @@ import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
@@ -689,7 +689,7 @@ public abstract class AbstractStreamOperator<OUT>
 		this.output.emitLatencyMarker(marker);
 	}
 
-	public void processBoundedDelayMarker(BoundedDelayMarker marker) {
+	public void processBoundedDelayMarker(EndOfEpochMarker marker) {
 		this.output.emitBoundedDelayMarker(marker);
 	}
 
@@ -708,7 +708,7 @@ public abstract class AbstractStreamOperator<OUT>
 		}
 
 		@Override
-		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		public void emitBoundedDelayMarker(EndOfEpochMarker delayMarker) {
 			output.emitBoundedDelayMarker(delayMarker);
 		}
 

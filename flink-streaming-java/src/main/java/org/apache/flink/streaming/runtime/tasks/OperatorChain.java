@@ -45,7 +45,7 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
@@ -401,10 +401,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 	}
 
 	private RecordWriterOutput<OUT> createStreamOutput(
-			StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter,
-			StreamEdge edge,
-			StreamConfig upStreamConfig,
-			Environment taskEnvironment) {
+		StreamTask<OUT, OP> containingTask,
+		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter,
+		StreamEdge edge,
+		StreamConfig upStreamConfig,
+		Environment taskEnvironment
+	) {
 		OutputTag sideOutputTag = edge.getOutputTag(); // OutputTag, return null if not sideOutput
 
 		TypeSerializer outSerializer = null;
@@ -528,7 +530,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 
 		@Override
-		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		public void emitBoundedDelayMarker(EndOfEpochMarker delayMarker) {
 			try {
 				operator.processBoundedDelayMarker(delayMarker);
 			} catch (Exception e) {
@@ -660,7 +662,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 
 		@Override
-		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		public void emitBoundedDelayMarker(EndOfEpochMarker delayMarker) {
 			for (Output<StreamRecord<T>> output : outputs) {
 				output.emitBoundedDelayMarker(delayMarker);
 			}

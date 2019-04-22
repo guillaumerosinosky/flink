@@ -146,9 +146,11 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			typeSerializer.copy(source, target);
@@ -157,9 +159,11 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		}
 		else if (tag == TAG_STREAM_STATUS) {
 			target.writeInt(source.readInt());
+			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 		} else if (tag == TAG_LATENCY_MARKER) {
@@ -169,7 +173,9 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeInt(source.readInt());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
+			target.writeLong(source.readLong());
 		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
+			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
 			target.writeLong(source.readLong());
@@ -192,23 +198,27 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 				target.write(TAG_REC_WITH_TIMESTAMP);
 				target.writeLong(record.getTimestamp());
 				target.writeLong(record.getDeduplicationTimestamp());
-				target.writeLong(record.getSentTimestamp());
+				target.writeLong(record.getCurrentTs());
+				target.writeLong(record.getPreviousTs());
 			} else {
 				target.write(TAG_REC_WITHOUT_TIMESTAMP);
 				target.writeLong(record.getDeduplicationTimestamp());
-				target.writeLong(record.getSentTimestamp());
+				target.writeLong(record.getCurrentTs());
+				target.writeLong(record.getPreviousTs());
 			}
 			typeSerializer.serialize(record.getValue(), target);
 		} else if (value.isWatermark()) {
 			target.write(TAG_WATERMARK);
 			target.writeLong(value.asWatermark().getTimestamp());
 			target.writeLong(value.getDeduplicationTimestamp());
-			target.writeLong(value.getSentTimestamp());
+			target.writeLong(value.getCurrentTs());
+			target.writeLong(value.getPreviousTs());
 		} else if (value.isStreamStatus()) {
 			target.write(TAG_STREAM_STATUS);
 			target.writeInt(value.asStreamStatus().getStatus());
 			target.writeLong(value.getDeduplicationTimestamp());
-			target.writeLong(value.getSentTimestamp());
+			target.writeLong(value.getCurrentTs());
+			target.writeLong(value.getPreviousTs());
 		} else if (value.isLatencyMarker()) {
 			target.write(TAG_LATENCY_MARKER);
 			target.writeLong(value.asLatencyMarker().getMarkedTime());
@@ -216,12 +226,14 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(value.asLatencyMarker().getOperatorId().getUpperPart());
 			target.writeInt(value.asLatencyMarker().getSubtaskIndex());
 			target.writeLong(value.getDeduplicationTimestamp());
-			target.writeLong(value.getSentTimestamp());
+			target.writeLong(value.getCurrentTs());
+			target.writeLong(value.getPreviousTs());
 		} else if (value.isBoundedDelayMarker()) {
 			target.write(TAG_BOUNDED_DELAY_MARKER);
 			target.writeLong(value.getDeduplicationTimestamp());
-			target.writeLong(value.getSentTimestamp());
+			target.writeLong(value.getCurrentTs());
 			target.writeLong(value.asBoundedDelayMarker().getEpoch());
+			target.writeLong(value.getPreviousTs());
 		} else {
 			throw new RuntimeException();
 		}
@@ -234,45 +246,53 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			long timestamp = source.readLong();
 			long dedupTimestamp = source.readLong();
 			long sentTimestamp = source.readLong();
+			long previousTs = source.readLong();
 
 			StreamRecord<T> rec = new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
 			rec.setDeduplicationTimestamp(dedupTimestamp);
-			rec.setSentTimestamp(sentTimestamp);
-
+			rec.setCurrentTimestamp(sentTimestamp);
+			rec.setPreviousTimestamp(previousTs);
 			return rec;
 		} else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
 
 			long dedupTimestamp = source.readLong();
 			long sentTimestamp = source.readLong();
+			long previousTs = source.readLong();
 
 			StreamRecord<T> rec = new StreamRecord<T>(typeSerializer.deserialize(source));
 			rec.setDeduplicationTimestamp(dedupTimestamp);
-			rec.setSentTimestamp(sentTimestamp);
-
+			rec.setCurrentTimestamp(sentTimestamp);
+			rec.setPreviousTimestamp(previousTs);
 			return rec;
 		} else if (tag == TAG_WATERMARK) {
 			long value = source.readLong();
 			long dedupTs = source.readLong();
 			long sentTs = source.readLong();
+			long previousTs = source.readLong();
+
 			Watermark watermark = new Watermark(value);
 			watermark.setDeduplicationTimestamp(dedupTs);
-			watermark.setSentTimestamp(sentTs);
+			watermark.setCurrentTimestamp(sentTs);
+			watermark.setPreviousTimestamp(previousTs);
 			return watermark;
 		} else if (tag == TAG_STREAM_STATUS) {
 			StreamStatus streamStatus = new StreamStatus(source.readInt());
 			streamStatus.setDeduplicationTimestamp(source.readLong());
-			streamStatus.setSentTimestamp(source.readLong());
+			streamStatus.setCurrentTimestamp(source.readLong());
+			streamStatus.setPreviousTimestamp(source.readLong());
 			return streamStatus;
 		} else if (tag == TAG_LATENCY_MARKER) {
 			LatencyMarker latencyMarker = new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
 			latencyMarker.setDeduplicationTimestamp(source.readLong());
-			latencyMarker.setSentTimestamp(source.readLong());
+			latencyMarker.setCurrentTimestamp(source.readLong());
+			latencyMarker.setPreviousTimestamp(source.readLong());
 			return latencyMarker;
 		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
-			BoundedDelayMarker b = new BoundedDelayMarker();
+			EndOfEpochMarker b = new EndOfEpochMarker();
 			b.setDeduplicationTimestamp(source.readLong());
-			b.setSentTimestamp(source.readLong());
+			b.setCurrentTimestamp(source.readLong());
 			b.setEpoch(source.readLong());
+			b.setPreviousTimestamp(source.readLong());
 			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
@@ -292,7 +312,8 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			StreamRecord<T> reuseRecord = reuse.asRecord();
 			reuseRecord.replace(value, timestamp);
 			reuseRecord.setDeduplicationTimestamp(dedupTimestamp);
-			reuseRecord.setSentTimestamp(sentTimestamp);
+			reuseRecord.setCurrentTimestamp(sentTimestamp);
+			reuseRecord.setPreviousTimestamp(source.readLong());
 			return reuseRecord;
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
@@ -302,7 +323,8 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			StreamRecord<T> reuseRecord = reuse.asRecord();
 			reuseRecord.replace(value);
 			reuseRecord.setDeduplicationTimestamp(dedupTimestamp);
-			reuseRecord.setSentTimestamp(sentTimestamp);
+			reuseRecord.setCurrentTimestamp(sentTimestamp);
+			reuseRecord.setPreviousTimestamp(source.readLong());
 			return reuseRecord;
 		}
 		else if (tag == TAG_WATERMARK) {
@@ -311,19 +333,22 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			long sentTs = source.readLong();
 			Watermark watermark = new Watermark(value);
 			watermark.setDeduplicationTimestamp(dedupTs);
-			watermark.setSentTimestamp(sentTs);
+			watermark.setCurrentTimestamp(sentTs);
+			watermark.setPreviousTimestamp(source.readLong());
 			return watermark;
 		}
 		else if (tag == TAG_LATENCY_MARKER) {
 			LatencyMarker latencyMarker = new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
 			latencyMarker.setDeduplicationTimestamp(source.readLong());
-			latencyMarker.setSentTimestamp(source.readLong());
+			latencyMarker.setCurrentTimestamp(source.readLong());
+			latencyMarker.setPreviousTimestamp(source.readLong());
 			return latencyMarker;
 		} else if (tag == TAG_BOUNDED_DELAY_MARKER) {
-			BoundedDelayMarker b = new BoundedDelayMarker();
+			EndOfEpochMarker b = new EndOfEpochMarker();
 			b.setDeduplicationTimestamp(source.readLong());
-			b.setSentTimestamp(source.readLong());
+			b.setCurrentTimestamp(source.readLong());
 			b.setEpoch(source.readLong());
+			b.setPreviousTimestamp(source.readLong());
 			return b;
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);

@@ -24,7 +24,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
@@ -169,7 +169,14 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			this.idleMarksTimer = Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
 				try {
 					synchronized (lock) {
-						output.emitBoundedDelayMarker(new BoundedDelayMarker(epoch++));
+						EndOfEpochMarker marker = new EndOfEpochMarker(epoch);
+
+						marker.setPreviousTimestamp(Long.MAX_VALUE);
+						marker.setCurrentTimestamp(Long.MAX_VALUE);
+
+						output.emitBoundedDelayMarker(marker);
+
+						epoch++;
 					}
 				} catch (Throwable t) {
 					LOG.warn("Error while emitting bounded delay marker. ", t);

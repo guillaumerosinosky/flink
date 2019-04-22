@@ -56,7 +56,7 @@ import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializerImpl;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
@@ -596,7 +596,7 @@ public class AbstractStreamOperatorTestHarness<OUT> implements AutoCloseable {
 		}
 
 		@Override
-		public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+		public void emitBoundedDelayMarker(EndOfEpochMarker delayMarker) {
 			outputList.add(delayMarker);
 		}
 

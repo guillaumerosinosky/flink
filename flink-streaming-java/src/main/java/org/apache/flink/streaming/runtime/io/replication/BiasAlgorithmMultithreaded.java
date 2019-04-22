@@ -1,6 +1,6 @@
 package org.apache.flink.streaming.runtime.io.replication;
 
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.util.Preconditions;
 
@@ -74,7 +74,7 @@ public final class BiasAlgorithmMultithreaded extends Chainable {
 		}
 
 		Preconditions.checkState(channel <= numProducers - 1, "Received message on channel %s, but max is %s", channel, numProducers - 1);
-		long timestamp = value.getSentTimestamp();
+		long timestamp = value.getCurrentTs();
 		addToQueue(channel, timestamp, value);
 	}
 
@@ -93,7 +93,7 @@ public final class BiasAlgorithmMultithreaded extends Chainable {
 		}
 	}
 
-	public void newEpoch(BoundedDelayMarker m, int channel) throws Exception {
+	public void newEpoch(EndOfEpochMarker m, int channel) throws Exception {
 		int fastestChannel = idxMax(this.elemsInEpoch);
 		long fastestRate = this.elemsInEpoch[fastestChannel];
 

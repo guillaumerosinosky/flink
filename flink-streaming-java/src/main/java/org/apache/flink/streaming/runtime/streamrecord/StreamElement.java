@@ -29,7 +29,8 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 public abstract class StreamElement {
 
 	private long deduplicationTimestamp = -1;
-	private long sentTimestamp = -1;
+	private long currentTs = -1;
+	private long previousTs = -1;
 
 	/**
 	 * Checks whether this element is a watermark.
@@ -64,7 +65,7 @@ public abstract class StreamElement {
 	}
 
 	public final boolean isBoundedDelayMarker() {
-		return getClass() == BoundedDelayMarker.class;
+		return getClass() == EndOfEpochMarker.class;
 	}
 
 	/**
@@ -104,23 +105,31 @@ public abstract class StreamElement {
 		return (LatencyMarker) this;
 	}
 
-	public final BoundedDelayMarker asBoundedDelayMarker() {
-		return (BoundedDelayMarker) this;
+	public final EndOfEpochMarker asBoundedDelayMarker() {
+		return (EndOfEpochMarker) this;
 	}
 
 	public final long getDeduplicationTimestamp() {
 		return deduplicationTimestamp;
 	}
 
-	public final long getSentTimestamp() {
-		return sentTimestamp;
+	public final long getCurrentTs() {
+		return currentTs;
 	}
 
 	public final void setDeduplicationTimestamp(long deduplicationTimestamp) {
 		this.deduplicationTimestamp = deduplicationTimestamp;
 	}
 
-	public final void setSentTimestamp(long sentTimestamp) {
-		this.sentTimestamp = sentTimestamp;
+	public final void setCurrentTimestamp(long sentTimestamp) {
+		this.currentTs = sentTimestamp;
+	}
+
+	public void setPreviousTimestamp(long previousTs) {
+		this.previousTs = previousTs;
+	}
+
+	public long getPreviousTs() {
+		return previousTs;
 	}
 }

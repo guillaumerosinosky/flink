@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -69,7 +70,7 @@ public class LeaderBasedReplication extends Chainable implements LeaderSelectorL
 	public void accept(StreamElement element, int channel) throws Exception {
 		checkFailure();
 		LOG.info("At {}: Adding element to queue", owningTaskName);
-		Enqueued e = new Enqueued(element.getSentTimestamp(), channel, element);
+		Enqueued e = new Enqueued(element.getCurrentTs(), channel, element);
 		this.queues[channel].put(e);
 		this.nextCandidates.put(channel);
 		LOG.info("At {}: done adding element to queue", owningTaskName);

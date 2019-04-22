@@ -23,7 +23,7 @@ import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OperatorChain;
@@ -119,7 +119,7 @@ public class DirectedOutput<OUT> implements OperatorChain.WatermarkGaugeExposing
 	}
 
 	@Override
-	public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+	public void emitBoundedDelayMarker(EndOfEpochMarker delayMarker) {
 		for (Output<StreamRecord<OUT>> out : allOutputs) {
 			out.emitBoundedDelayMarker(delayMarker);
 		}

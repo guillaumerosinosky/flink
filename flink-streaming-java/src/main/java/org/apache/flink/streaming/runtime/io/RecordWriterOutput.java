@@ -27,7 +27,7 @@ import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.replication.MonotonicWallclockTime;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -63,7 +63,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 	private int lastDedupTs;
 
-	private long previousSentTs;
+	private long previousSentTs = MonotonicWallclockTime.getNanos();
 
 	private StreamTask containingTask;
 
@@ -169,7 +169,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	@Override
-	public void emitBoundedDelayMarker(BoundedDelayMarker delayMarker) {
+	public void emitBoundedDelayMarker(EndOfEpochMarker delayMarker) {
 		setup(delayMarker);
 
 		try {
@@ -182,17 +182,24 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	private void setup(StreamElement element) {
-		if (this.isSource) {
+		if (element.isBoundedDelayMarker()) {
+			element.setPreviousTimestamp(Long.MAX_VALUE);
+			element.setCurrentTimestamp(Long.MAX_VALUE);
+		} else if (this.isSource) {
 			long nextSentTs = MonotonicWallclockTime.getNanos();
-			element.setSentTimestamp(nextSentTs);
+
+			element.setCurrentTimestamp(nextSentTs);
+			element.setPreviousTimestamp(previousSentTs);
 			Preconditions.checkState(previousSentTs < nextSentTs, "timestamps for sentTs are not strictly monotonic");
 			previousSentTs = nextSentTs;
+
 		} else {
 			long out = this.containingTask.getOutTs();
 			if (out <= previousSentTs) {
 				out = previousSentTs + 1;
 			}
-			element.setSentTimestamp(out);
+			element.setCurrentTimestamp(out);
+			element.setPreviousTimestamp(previousSentTs);
 			previousSentTs = out;
 		}
 

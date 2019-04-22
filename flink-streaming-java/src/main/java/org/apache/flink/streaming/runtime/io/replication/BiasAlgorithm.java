@@ -56,7 +56,7 @@ public final class BiasAlgorithm extends Chainable {
 	public void accept(StreamElement value, int channel) throws Exception {
 		Preconditions.checkState(channel <= numProducers - 1, "Received message on channel %s, but max is %s", channel, numProducers - 1);
 
-		long timestamp = value.getSentTimestamp();
+		long timestamp = value.getCurrentTs();
 		addToQueue(channel, timestamp, value);
 
 		while (true) {
