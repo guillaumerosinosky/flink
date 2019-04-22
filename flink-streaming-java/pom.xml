@@ -97,16 +97,22 @@ under the License.
 			<version>2.12.0</version>
 			<scope>test</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka-clients</artifactId>
+			<version>2.2.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>
 		<plugins>
 
 			<!-- activate API compatibility checks -->
-			<plugin>
-				<groupId>com.github.siom79.japicmp</groupId>
-				<artifactId>japicmp-maven-plugin</artifactId>
-			</plugin>
+			<!--<plugin>-->
+				<!--<groupId>com.github.siom79.japicmp</groupId>-->
+				<!--<artifactId>japicmp-maven-plugin</artifactId>-->
+			<!--</plugin>-->
 
 			<!-- disable fork reuse for the streaming project, because of
 			incorrect declaration of tests -->
@@ -126,6 +132,28 @@ under the License.
 						<goals>
 							<goal>test-jar</goal>
 						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.2.1</version>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<relocations>
+								<relocation>
+									<pattern>org.apache.kafka</pattern>
+									<shadedPattern>org.shaded.apache.kafka</shadedPattern>
+								</relocation>
+							</relocations>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>

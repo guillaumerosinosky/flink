@@ -44,6 +44,8 @@ import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithmMultithreaded;
 import org.apache.flink.streaming.runtime.io.replication.Chainable;
 import org.apache.flink.streaming.runtime.io.replication.Deduplication;
+import org.apache.flink.streaming.runtime.io.replication.KafkaOrderBroadcaster;
+import org.apache.flink.streaming.runtime.io.replication.KafkaReplication;
 import org.apache.flink.streaming.runtime.io.replication.LeaderBasedReplication;
 import org.apache.flink.streaming.runtime.io.replication.LogicalChannelMapper;
 import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
@@ -71,6 +73,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.apache.flink.api.common.ExecutionConfig.OrderingAlgorithm.BETTER_BIAS;
+import static org.apache.flink.api.common.ExecutionConfig.OrderingAlgorithm.BIAS;
+import static org.apache.flink.api.common.ExecutionConfig.OrderingAlgorithm.BIAS_THREADED;
+import static org.apache.flink.api.common.ExecutionConfig.OrderingAlgorithm.LEADER;
+import static org.apache.flink.api.common.ExecutionConfig.OrderingAlgorithm.LEADER_KAFKA;
+import static org.apache.flink.api.common.ExecutionConfig.OrderingAlgorithm.NO_ORDERING;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -183,18 +191,49 @@ public class StreamInputProcessor<IN> {
 		String replicaGroup,
 		ExecutionAttemptID executionAttempt
 	) throws Exception {
-		switch (a) {
-			case LEADER:
-				return buildLeaderChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock, rpcService, replicaGroup, executionAttempt);
-			case BIAS:
-				return buildBiasChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
-			case BIAS_THREADED:
-				return buildBiasThreadedChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
-			case BETTER_BIAS:
-				return buildBetterBiasChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
-			default:
-				throw new RuntimeException("Invalid algorithm " + a);
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+
+		if (a == LEADER) {
+			return buildLeaderChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock, rpcService, replicaGroup, executionAttempt);
+		} else if (a == BIAS) {
+			return buildBiasChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
+		} else if (a == BIAS_THREADED) {
+			return buildBiasThreadedChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock);
+		} else if (a == BETTER_BIAS) {
+
+			Chainable mapper = createLogicalChannelMapper(upstreamReplicationFactor);
+			Deduplication dedup = createDeduplicator(numLogicalChannels);
+			BetterBiasAlgorithm biasAlgorithm = new BetterBiasAlgorithm(numLogicalChannels);
+			OneInputStreamOperatorAdapter adapter = createOneInputStreamAdapter(gauge, maintainer, checkpointLock, numLogicalChannels);
+			OutTsUpdater next = new OutTsUpdater(checkpointedTask);
+
+			mapper.setNext(dedup)
+				.setNext(biasAlgorithm)
+				.setNext(next)
+				.setNext(adapter);
+
+			return mapper;
+
+		} else if (a == NO_ORDERING) {
+
+			Chainable mapper = createLogicalChannelMapper(upstreamReplicationFactor);
+			Deduplication dedup = createDeduplicator(numLogicalChannels);
+
+			// no ordering algorithm!
+			OneInputStreamOperatorAdapter adapter = createOneInputStreamAdapter(gauge, maintainer, checkpointLock, numLogicalChannels);
+			OutTsUpdater outTsUpdater = new OutTsUpdater(checkpointedTask);
+
+			mapper.setNext(dedup)
+				.setNext(outTsUpdater)
+				.setNext(adapter);
+
+			return mapper;
+
+		} else if (a == LEADER_KAFKA) {
+			return buildLeaderKafkaChain(upstreamReplicationFactor, gauge, maintainer, checkpointLock, rpcService, replicaGroup, executionAttempt);
 		}
+		throw new RuntimeException("Invalid algorithm " + a);
 	}
 
 	private Chainable buildLeaderChain(
@@ -206,13 +245,15 @@ public class StreamInputProcessor<IN> {
 		String replicaGroup,
 		ExecutionAttemptID executionAttempt
 	) throws Exception {
-		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+		Chainable mapper = createLogicalChannelMapper(upstreamReplicationFactor);
 
 		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
-		Deduplication dedup = new Deduplication(numLogicalChannels);
+		Deduplication dedup = createDeduplicator(numLogicalChannels);
 
 		// make those this parts of the object b.c. I don't think the stream input processor should be responsible for closing them!
 		CuratorFramework client = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
+		// TODO: Thesis - Should this be necessary here?
+		client.start();
 		OrderBroadcaster b = new OrderBroadcasterImpl(client, rpcService, executionAttempt, replicaGroup);
 		LeaderBasedReplication leaderBasedReplication = new LeaderBasedReplication(numLogicalChannels, b, 200);
 
@@ -225,17 +266,52 @@ public class StreamInputProcessor<IN> {
 
 		leaderBasedReplication.addCloseables(client, leaderSelector);
 
-		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
-			this.streamOperator,
-			gauge,
-			maintainer,
-			numLogicalChannels,
-			checkpointLock
-		);
+		OneInputStreamOperatorAdapter adapter = createOneInputStreamAdapter(gauge, maintainer, checkpointLock, numLogicalChannels);
 
 		mapper
 			.setNext(dedup)
 			.setNext(leaderBasedReplication)
+			.setNext(adapter);
+
+		return mapper;
+	}
+
+	private Chainable createLogicalChannelMapper(int[] upstreamReplicationFactor) {
+		return new LogicalChannelMapper(upstreamReplicationFactor);
+	}
+
+	private Chainable buildLeaderKafkaChain(
+		int[] upstreamReplicationFactor,
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock,
+		RpcService rpcService,
+		String replicaGroup,
+		ExecutionAttemptID executionAttempt
+	) throws Exception {
+		Chainable mapper = createLogicalChannelMapper(upstreamReplicationFactor);
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+		Deduplication dedup = createDeduplicator(numLogicalChannels);
+
+		// make those this parts of the object b.c. I don't think the stream input processor should be responsible for closing them!
+		CuratorFramework client = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
+		client.start();
+
+		String topic = executionAttempt.toString() + replicaGroup;
+		OrderBroadcaster b = new KafkaOrderBroadcaster(topic);
+
+		KafkaReplication kafkaReplication = new KafkaReplication(numLogicalChannels, b, 10, topic);
+
+		LOG.info("Setting up leader selection for replica group {}", replicaGroup);
+		LeaderSelector leaderSelector = new LeaderSelector(client, "/flink/leader/" + replicaGroup, kafkaReplication);
+		leaderSelector.start();
+
+		OneInputStreamOperatorAdapter adapter = createOneInputStreamAdapter(gauge, maintainer, checkpointLock, numLogicalChannels);
+
+		mapper
+			.setNext(dedup)
+			.setNext(kafkaReplication)
 			.setNext(adapter);
 
 		return mapper;
@@ -247,20 +323,14 @@ public class StreamInputProcessor<IN> {
 		StreamStatusMaintainer maintainer,
 		Object checkpointLock
 	) {
-		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+		Chainable mapper = createLogicalChannelMapper(upstreamReplicationFactor);
 
 		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
-		Deduplication dedup = new Deduplication(numLogicalChannels);
+		Deduplication dedup = createDeduplicator(numLogicalChannels);
 
 		BiasAlgorithm biasAlgorithm = new BiasAlgorithm(numLogicalChannels);
 
-		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
-			this.streamOperator,
-			gauge,
-			maintainer,
-			numLogicalChannels,
-			checkpointLock
-		);
+		OneInputStreamOperatorAdapter adapter = createOneInputStreamAdapter(gauge, maintainer, checkpointLock, numLogicalChannels);
 
 		mapper.setNext(dedup)
 			.setNext(biasAlgorithm)
@@ -269,33 +339,8 @@ public class StreamInputProcessor<IN> {
 		return mapper;
 	}
 
-	private Chainable buildBetterBiasChain(
-		int[] upstreamReplicationFactor,
-		WatermarkGauge gauge,
-		StreamStatusMaintainer maintainer,
-		Object checkpointLock
-	) {
-		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
-
-		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
-		Deduplication dedup = new Deduplication(numLogicalChannels);
-
-		BetterBiasAlgorithm biasAlgorithm = new BetterBiasAlgorithm(numLogicalChannels);
-
-		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
-			this.streamOperator,
-			gauge,
-			maintainer,
-			numLogicalChannels,
-			checkpointLock
-		);
-
-		mapper.setNext(dedup)
-			.setNext(biasAlgorithm)
-			.setNext(new OutTsUpdater(checkpointedTask))
-			.setNext(adapter);
-
-		return mapper;
+	private Deduplication createDeduplicator(int numLogicalChannels) {
+		return new Deduplication(numLogicalChannels);
 	}
 
 	private static class OutTsUpdater extends Chainable {
@@ -311,10 +356,14 @@ public class StreamInputProcessor<IN> {
 
 		@Override
 		public void accept(StreamElement element, int channel) throws Exception {
-			long ts = element.getSentTimestamp();
-			sentTs.put(channel, ts);
-			long max = Collections.max(sentTs.values());
-			task.setOutTs(max);
+
+			if (!element.isBoundedDelayMarker()) {
+				long ts = element.getCurrentTs();
+				sentTs.put(channel, ts);
+				long max = Collections.max(sentTs.values());
+				task.setOutTs(max);
+			}
+
 			if (this.hasNext()) {
 				this.getNext().accept(element, channel);
 			}
@@ -327,26 +376,39 @@ public class StreamInputProcessor<IN> {
 		StreamStatusMaintainer maintainer,
 		Object checkpointLock
 	) {
-		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+		Chainable mapper = createLogicalChannelMapper(upstreamReplicationFactor);
 
 		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
-		Deduplication dedup = new Deduplication(numLogicalChannels);
+		Deduplication dedup = createDeduplicator(upstreamReplicationFactor);
 
 		BiasAlgorithmMultithreaded biasAlgorithm = new BiasAlgorithmMultithreaded(numLogicalChannels);
 
-		OneInputStreamOperatorAdapter adapter = new OneInputStreamOperatorAdapter(
-			this.streamOperator,
-			gauge,
-			maintainer,
-			numLogicalChannels,
-			checkpointLock
-		);
+		OneInputStreamOperatorAdapter adapter = createOneInputStreamAdapter(gauge, maintainer, checkpointLock, numLogicalChannels);
 
 		mapper.setNext(dedup)
 			.setNext(biasAlgorithm)
 			.setNext(adapter);
 
 		return mapper;
+	}
+
+	private OneInputStreamOperatorAdapter createOneInputStreamAdapter(
+		WatermarkGauge gauge,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock,
+		int numLogicalChannels
+	) {
+		return new OneInputStreamOperatorAdapter(
+			this.streamOperator,
+			gauge,
+			maintainer,
+			numLogicalChannels,
+			checkpointLock
+		);
+	}
+
+	private Deduplication createDeduplicator(int[] upstreamReplicationFactor) {
+		return new Deduplication(Utils.numLogicalChannels(upstreamReplicationFactor));
 	}
 
 	public boolean processInput() throws Exception {

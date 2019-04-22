@@ -1,13 +1,13 @@
 package org.apache.flink.streaming.runtime.io.replication;
 
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,28 +21,22 @@ public class BetterBiasAlgorithm extends Chainable {
 
 	private Map<Long, PriorityQueue<QueueElem>> messages;
 
-	private long[] epochStart;
 	private long[] currentEpochAtChannel;
-	private long[] previousTimestamp;
 	private final int numProducers;
 
-	private Map<Long, Map<Integer, Long>> latest;
-	private Map<Long, Map<Integer, Long>> epochCount;
+	// contains the latest timestamp per epoch per channel
+	private Map<Long, Long[]> latest;
 
 	public BetterBiasAlgorithm(int numProducers) {
-		this.epochStart = new long[numProducers];
 		this.currentEpochAtChannel = new long[numProducers];
-		this.previousTimestamp = new long[numProducers];
-		this.epochCount = new HashMap<>();
 		this.latest = new HashMap<>();
 		this.numProducers = numProducers;
 
 		HashMap<Integer, Long> value = new HashMap<>();
-		this.latest.put(0L, value);
+		this.latest.put(0L, new Long[numProducers]);
 		for (int i = 0; i < numProducers; i++) {
-			this.epochStart[i] = 0;
+			this.latest.get(0L)[i] = 0L;
 			this.currentEpochAtChannel[i] = 0;
-			this.previousTimestamp[i] = 0;
 			value.put(i, 0L);
 		}
 
@@ -60,37 +54,28 @@ public class BetterBiasAlgorithm extends Chainable {
 	public void accept(StreamElement element, int channel) throws Exception {
 
 		long epoch, curr, prev;
+		epoch = currentEpochAtChannel[channel];
+		curr = element.getCurrentTs(); //  - epochStart[channel];
+		prev = element.getPreviousTs(); // - epochStart[channel];
 
-		if (element.isBoundedDelayMarker()) {
-			epoch = element.asBoundedDelayMarker().getEpoch();
-			curr = Long.MAX_VALUE;
-			prev = Long.MAX_VALUE;
-		} else {
-			epoch = currentEpochAtChannel[channel];
+		LOG.trace("Received element curr {} prev {} epoch {} chan {} delayMarker? {}", curr, prev, epoch, channel, element.isBoundedDelayMarker());
 
-			if (element.getSentTimestamp() == -1) {
-				throw new RuntimeException("sentTs not properly initialized!");
-			}
-
-			curr = element.getSentTimestamp() - epochStart[channel];
-			prev = previousTimestamp[channel];
-			Preconditions.checkState(curr > prev, "curr needs to be bigger than prev for deterministic ordering");
+		if (element.getCurrentTs() == -1 || element.getPreviousTs() == -1) {
+			throw new RuntimeException("sentTs not properly initialized!");
 		}
 
-		if (element.isBoundedDelayMarker()) {
-			currentEpochAtChannel[channel] = epoch + 1;
-//			epochStart[channel] = element.getSentTimestamp();
+		if (!element.isBoundedDelayMarker()) {
+			Preconditions.checkState(curr > prev, "curr ({}) needs to be bigger than prev ({}) for deterministic ordering", curr, prev);
 		}
 
-		LOG.trace("Received element (epoch={}, prev={}, curr={}, isBounded={}, channel={})", epoch, prev, curr, element.isBoundedDelayMarker(), channel);
-		previousTimestamp[channel] = curr;
-
-		curr += bias(curr, channel);
-		prev += bias(prev, channel);
+//		curr += bias(curr, channel);
+//		prev += bias(prev, channel);
 
 		QueueElem e = new QueueElem(element, prev, curr, epoch, channel);
 		enqueue(epoch, e);
 		updateLatestInEpoch(channel, epoch, curr);
+
+		LOG.trace("Updated latest for epoch {} to: {} ", epoch, Arrays.toString(this.latest.get(epoch)));
 
 		if (epoch == currentEpoch) {
 			boolean done = false;
@@ -98,56 +83,68 @@ public class BetterBiasAlgorithm extends Chainable {
 				QueueElem q = messages.get(epoch).peek();
 
 				if (q != null && canBeDelivered(epoch, q)) {
+					if (q.m instanceof EndOfEpochMarker) {
+						throw new RuntimeException("EndOfEpochMarker should never be delivered here!");
+					}
 					this.messages.get(epoch).poll();
-					deliver(q, epoch);
+					deliver(q);
 				} else {
 					done = true;
 				}
 			}
 		}
 
-		if (newEpochHasStarted()) { // we have seen epoch messages for both channels
+		if (element.isBoundedDelayMarker()) {
+			if (element.asBoundedDelayMarker().getEpoch() == -1) {
+				throw new RuntimeException("Epoch not initialized properly!");
+			}
+			long newEpoch = element.asBoundedDelayMarker().getEpoch() + 1;
 
-			LOG.info("Starting procedure for epoch {} with biases {}, {}", currentEpoch + 1, bias(0, 0), bias(0, 1));
-
-			epochCount.computeIfAbsent(epoch, k -> new HashMap<>());
-			epochCount.get(epoch).forEach((chan, count) -> {
-				System.out.println(count + " elements in channel " + chan + " in epoch " + epoch);
-			});
-
-			// emit all epoch markers forward round robin over all channels
-			for (int i = 0; i < numProducers; i++) {
-				QueueElem elem = this.messages.get(currentEpoch).poll();
-				if (!(elem.m instanceof BoundedDelayMarker)) {
-					LOG.error("elem is not an end-of-epoch marker for current epoch {}", currentEpoch);
-					LOG.error("Dumping elements of channel {} (including first dequeued element that was expected to be a BoundedDelayMarker)", i);
-					LOG.error("------ Queue {} ------", i);
-					LOG.error(elem.toString());
-					for (QueueElem q : this.messages.get(currentEpoch)) {
-						LOG.error(q.toString());
-					}
-					LOG.error("----------------------");
-					throw new RuntimeException("Should be the end of epoch marker");
-				}
-				deliver(elem, epoch);
+			if (newEpoch != currentEpochAtChannel[channel] + 1) {
+				throw new RuntimeException("new epoch " + newEpoch + " != epoch + 1: " + (epoch + 1));
 			}
 
-			if (this.messages.get(currentEpoch).size() != 0) {
-				throw new RuntimeException("Epoch queue should be empty after markers");
-			}
-
-			this.messages.remove(currentEpoch);
-
-			currentEpoch++;
-
-			messages.put(epoch, createNewQueue());
+			currentEpochAtChannel[channel] = newEpoch;
 
 			Map<Integer, Long> m = new HashMap<>();
 			for (int i = 0; i < numProducers; i++) {
 				m.put(i, 0L);
-				previousTimestamp[i] = 0;
 			}
-			latest.put(currentEpoch, m);
+
+			if (latest.get(newEpoch) == null) {
+				Long[] lastest = new Long[numProducers];
+				Arrays.fill(lastest, 0L);
+				latest.put(newEpoch, lastest);
+			}
+		}
+
+		if (newEpochHasStarted()) { // we have seen epoch messages for both channels
+
+			// do everything that needs the current epoch to still be the old one here
+			for (int i = 0; i < numProducers; i++) {
+				QueueElem q = this.messages.get(currentEpoch).poll();
+				if (q == null) {
+					throw new RuntimeException("There should still be numProducer EndOfEpochMarkers in the queue");
+				} else if (!(q.m instanceof EndOfEpochMarker)) {
+					throw new RuntimeException("Found element still in queue while flushing epoch " + currentEpoch + " that is not an EndOfEpochMarker: " + q);
+				} else {
+					// everything is fine
+				}
+			}
+
+			if (this.messages.get(currentEpoch).size() > 0) {
+				throw new RuntimeException("Queue should be empty after EndOfEpochMarkers are delivered");
+			}
+
+			EndOfEpochMarker marker = new EndOfEpochMarker();
+			marker.setEpoch(currentEpoch);
+			marker.setPreviousTimestamp(Long.MAX_VALUE);
+			marker.setCurrentTimestamp(Long.MAX_VALUE);
+			QueueElem q = new QueueElem(marker, Long.MAX_VALUE, Long.MAX_VALUE, currentEpoch, -1);
+			deliver(q);
+
+			// update the current epoch and initialize datastructures for new epoch
+			currentEpoch += 1;
 		}
 	}
 
@@ -165,13 +162,11 @@ public class BetterBiasAlgorithm extends Chainable {
 	}
 
 	private void updateLatestInEpoch(int channel, long epoch, long curr) {
-		Map<Integer, Long> perChannel = latest.get(epoch);
-		if (perChannel == null) {
-			perChannel = new HashMap<>();
-			latest.put(epoch, perChannel);
+		long prev = latest.get(epoch)[channel];
+		if (prev > curr) {
+			throw new RuntimeException("Prev > curr!! " + prev + " > " + curr);
 		}
-
-		perChannel.put(channel, curr);
+		latest.get(epoch)[channel] = curr;
 	}
 
 	private void enqueue(long epoch, QueueElem e) {
@@ -185,20 +180,15 @@ public class BetterBiasAlgorithm extends Chainable {
 	}
 
 	private boolean canBeDelivered(long epoch, QueueElem q) {
-		long minLatestValueOnAllChannels = Collections.min(latest.get(epoch).values());
-		return q.prev < minLatestValueOnAllChannels;
+		long min = Arrays.stream(latest.get(epoch)).min(Long::compare).get();
+		return q.prev < min;
 	}
 
 	private long bias(long somevalue, int channel) {
 		return 0;
 	}
 
-	private void deliver(QueueElem q, long epoch) throws Exception {
-		Map<Integer, Long> epochCountPerChannel =
-			epochCount.computeIfAbsent(epoch, k -> new HashMap<>());
-
-		epochCountPerChannel.compute(q.channel, (k, v) -> (v != null) ? v + 1 : 0);
-
+	private void deliver(QueueElem q) throws Exception {
 		LOG.trace("Delivering {}", q);
 		if (this.hasNext()) {
 			this.getNext().accept(q.m, q.channel);

@@ -1,7 +1,7 @@
 package org.apache.flink.streaming.runtime.io.replication;
 
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.streaming.runtime.streamrecord.BoundedDelayMarker;
+import org.apache.flink.streaming.runtime.streamrecord.EndOfEpochMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
 import com.google.common.collect.Lists;
@@ -16,11 +16,11 @@ public class BetterBiasAlgorithmTest {
 		CollectionChainable collector = new CollectionChainable();
 		b.setNext(collector);
 
-		b.accept(createStreamElement(1), 0);
-		b.accept(createStreamElement(2), 0);
-		b.accept(createStreamElement(3), 0);
-		b.accept(createStreamElement(4), 0);
-		b.accept(createStreamElement(5), 0);
+		b.accept(createStreamElement(1, 0), 0);
+		b.accept(createStreamElement(2, 1), 0);
+		b.accept(createStreamElement(3, 2), 0);
+		b.accept(createStreamElement(4, 3), 0);
+		b.accept(createStreamElement(5, 4), 0);
 
 		// list should be empty
 		Assert.assertEquals(Lists.newArrayList(), collector.getElements());
@@ -32,15 +32,15 @@ public class BetterBiasAlgorithmTest {
 		CollectionChainable collector = new CollectionChainable();
 		b.setNext(collector);
 
-		StreamElement s0 = createStreamElement(1);
+		StreamElement s0 = createStreamElement(1, 0);
 		b.accept(s0, 0);
-		StreamElement s1 = createStreamElement(1);
+		StreamElement s1 = createStreamElement(1, 0);
 		b.accept(s1, 1);
 
-		StreamElement s2 = createStreamElement(2);
+		StreamElement s2 = createStreamElement(2, 1);
 		b.accept(s2, 0);
 
-		StreamElement s3 = createStreamElement(2);
+		StreamElement s3 = createStreamElement(2, 1);
 		b.accept(s3, 1);
 
 		// list should be empty
@@ -58,9 +58,9 @@ public class BetterBiasAlgorithmTest {
 		CollectionChainable collector = new CollectionChainable();
 		b.setNext(collector);
 
-		StreamElement s0 = createStreamElement(1);
+		StreamElement s0 = createStreamElement(1, 0);
 		b.accept(s0, 0);
-		StreamElement s1 = createStreamElement(2);
+		StreamElement s1 = createStreamElement(2, 1);
 		b.accept(s1, 0);
 
 		StreamElement e1 = createEndOfEpoch(0, 0);
@@ -83,10 +83,12 @@ public class BetterBiasAlgorithmTest {
 		CollectionChainable collector = new CollectionChainable();
 		b.setNext(collector);
 
-		StreamElement s_0 = createStreamElement(1); b.accept(s_0, 0);
+		StreamElement s_0 = createStreamElement(1, 0);
+		b.accept(s_0, 0);
 		Assert.assertEquals(Lists.newArrayList(), collector.getElements());
 
-		StreamElement s_1 = createStreamElement(1); b.accept(s_1, 1);
+		StreamElement s_1 = createStreamElement(1, 0);
+		b.accept(s_1, 1);
 
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_0, 0),
@@ -94,17 +96,20 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_2 = createStreamElement(2); b.accept(s_2, 0);
+		StreamElement s_2 = createStreamElement(2, 1);
+		b.accept(s_2, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_3 = createStreamElement(3); b.accept(s_3, 0);
+		StreamElement s_3 = createStreamElement(3, 2);
+		b.accept(s_3, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_4 = createStreamElement(3); b.accept(s_4, 1);
+		StreamElement s_4 = createStreamElement(3, 1);
+		b.accept(s_4, 1);
 
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_2, 0),
@@ -113,15 +118,18 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_5 = createStreamElement(4); b.accept(s_5, 0);
+		StreamElement s_5 = createStreamElement(4, 3);
+		b.accept(s_5, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 
-		StreamElement s_6 = createStreamElement(5); b.accept(s_6, 0);
+		StreamElement s_6 = createStreamElement(5, 4);
+		b.accept(s_6, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 
-		StreamElement s_7 = createStreamElement(5); b.accept(s_7, 1);
+		StreamElement s_7 = createStreamElement(5, 3);
+		b.accept(s_7, 1);
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_5, 0),
 			Tuple2.of(s_7, 1),
@@ -129,7 +137,8 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_8 = createStreamElement(7); b.accept(s_8, 1);
+		StreamElement s_8 = createStreamElement(7, 5);
+		b.accept(s_8, 1);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 
@@ -153,10 +162,12 @@ public class BetterBiasAlgorithmTest {
 		CollectionChainable collector = new CollectionChainable();
 		b.setNext(collector);
 
-		StreamElement s_0 = createStreamElement(1); b.accept(s_0, 0);
+		StreamElement s_0 = createStreamElement(1, 0);
+		b.accept(s_0, 0);
 		Assert.assertEquals(Lists.newArrayList(), collector.getElements());
 
-		StreamElement s_1 = createStreamElement(1); b.accept(s_1, 1);
+		StreamElement s_1 = createStreamElement(1, 0);
+		b.accept(s_1, 1);
 
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_0, 0),
@@ -164,17 +175,20 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_2 = createStreamElement(2); b.accept(s_2, 0);
+		StreamElement s_2 = createStreamElement(2, 1);
+		b.accept(s_2, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_3 = createStreamElement(3); b.accept(s_3, 0);
+		StreamElement s_3 = createStreamElement(3, 2);
+		b.accept(s_3, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_4 = createStreamElement(3); b.accept(s_4, 1);
+		StreamElement s_4 = createStreamElement(3, 1);
+		b.accept(s_4, 1);
 
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_2, 0),
@@ -183,15 +197,18 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_5 = createStreamElement(4); b.accept(s_5, 0);
+		StreamElement s_5 = createStreamElement(4, 3);
+		b.accept(s_5, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 
-		StreamElement s_6 = createStreamElement(5); b.accept(s_6, 0);
+		StreamElement s_6 = createStreamElement(5, 4);
+		b.accept(s_6, 0);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 
-		StreamElement s_7 = createStreamElement(5); b.accept(s_7, 1);
+		StreamElement s_7 = createStreamElement(5, 3);
+		b.accept(s_7, 1);
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_5, 0),
 			Tuple2.of(s_7, 1),
@@ -199,7 +216,8 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_8 = createStreamElement(7); b.accept(s_8, 1);
+		StreamElement s_8 = createStreamElement(7, 5);
+		b.accept(s_8, 1);
 		Assert.assertEquals(Lists.newArrayList(
 		), collector.getElements());
 
@@ -217,8 +235,9 @@ public class BetterBiasAlgorithmTest {
 		), collector.getElements());
 		collector.clear();
 
-		StreamElement s_9 = createStreamElement(6); b.accept(s_9, 0);
-		StreamElement s_10 = createStreamElement(8); b.accept(s_10, 1);
+		StreamElement s_9 = createStreamElement(6, 5); b.accept(s_9, 0);
+		StreamElement s_10 = createStreamElement(8, 7); b.accept(s_10, 1);
+
 		Assert.assertEquals(Lists.newArrayList(
 			Tuple2.of(s_9, 0),
 			Tuple2.of(s_10, 1)
@@ -232,11 +251,16 @@ public class BetterBiasAlgorithmTest {
 		CollectionChainable collector = new CollectionChainable();
 		b.setNext(collector);
 
-		for (int i = 1; i < 1000; i++) {
-			b.accept(createStreamElement(i), 0);
-		}
+		b.accept(createEndOfEpoch(-1, 0), 0);
+		b.accept(createEndOfEpoch(-1, 0), 1);
 
-		b.accept(createStreamElement(1), 1);
+		b.accept(createEndOfEpoch(-1, 1), 1);
+		b.accept(createEndOfEpoch(-1, 2), 1);
+		b.accept(createEndOfEpoch(-1, 3), 1);
+
+		b.accept(createEndOfEpoch(-1, 1), 0);
+
+		b.accept(createEndOfEpoch(-1, 2), 0);
 	}
 
 	@Test
@@ -248,27 +272,29 @@ public class BetterBiasAlgorithmTest {
 		b.accept(createEndOfEpoch(0, 0), 0);
 		b.accept(createEndOfEpoch(0, 0), 1);
 
-		b.accept(createStreamElement(10), 0);
+		b.accept(createStreamElement(10, 0), 0);
 
 		b.accept(createEndOfEpoch(12, 1), 0);
 		b.accept(createEndOfEpoch(12, 1), 1);
 	}
 
-	private StreamElement createStreamElement(long timestamp) {
+	private StreamElement createStreamElement(long curr, long prev) {
 		StreamElement element = new StreamElement() {
 			@Override
 			public String toString() {
-				return "StreamElement@" + timestamp;
+				return "(curr: " + curr + ", prev: " + prev + ")";
 			}
 		};
-		element.setSentTimestamp(timestamp);
+		element.setCurrentTimestamp(curr);
+		element.setPreviousTimestamp(prev);
 		return element;
 	}
 
 	private StreamElement createEndOfEpoch(long timestamp, long epoch) {
-		BoundedDelayMarker m = new BoundedDelayMarker();
+		EndOfEpochMarker m = new EndOfEpochMarker();
 		m.setEpoch(epoch);
-		m.setSentTimestamp(timestamp);
+		m.setCurrentTimestamp(Long.MAX_VALUE);
+		m.setPreviousTimestamp(Long.MAX_VALUE);
 		return m;
 	}
 
