@@ -32,12 +32,11 @@ public class BetterBiasAlgorithm extends Chainable {
 		this.latest = new HashMap<>();
 		this.numProducers = numProducers;
 
-		HashMap<Integer, Long> value = new HashMap<>();
 		this.latest.put(0L, new Long[numProducers]);
+
 		for (int i = 0; i < numProducers; i++) {
 			this.latest.get(0L)[i] = 0L;
 			this.currentEpochAtChannel[i] = 0;
-			value.put(i, 0L);
 		}
 
 		this.messages = new HashMap<>();
@@ -58,14 +57,14 @@ public class BetterBiasAlgorithm extends Chainable {
 		curr = element.getCurrentTs(); //  - epochStart[channel];
 		prev = element.getPreviousTs(); // - epochStart[channel];
 
-		LOG.trace("Received element curr {} prev {} epoch {} chan {} delayMarker? {}", curr, prev, epoch, channel, element.isBoundedDelayMarker());
+		LOG.trace("Received element curr {} prev {} epoch {} chan {} delayMarker? {}", curr, prev, epoch, channel, element.isEndOfEpochMarker());
 
 		if (element.getCurrentTs() == -1 || element.getPreviousTs() == -1) {
 			throw new RuntimeException("sentTs not properly initialized!");
 		}
 
-		if (!element.isBoundedDelayMarker()) {
-			Preconditions.checkState(curr > prev, "curr ({}) needs to be bigger than prev ({}) for deterministic ordering", curr, prev);
+		if (!element.isEndOfEpochMarker()) {
+			Preconditions.checkState(curr > prev, "curr (%s) needs to be bigger than prev (%s) for deterministic ordering", curr, prev);
 		}
 
 //		curr += bias(curr, channel);
@@ -73,8 +72,14 @@ public class BetterBiasAlgorithm extends Chainable {
 
 		QueueElem e = new QueueElem(element, prev, curr, epoch, channel);
 		enqueue(epoch, e);
-		updateLatestInEpoch(channel, epoch, curr);
 
+		// sanity check
+		if (latest.get(epoch)[channel] > curr) {
+			throw new RuntimeException("Previous last value is bigger than current last value");
+		}
+
+		// update latest values
+		latest.get(epoch)[channel] = curr;
 		LOG.trace("Updated latest for epoch {} to: {} ", epoch, Arrays.toString(this.latest.get(epoch)));
 
 		if (epoch == currentEpoch) {
@@ -94,23 +99,27 @@ public class BetterBiasAlgorithm extends Chainable {
 			}
 		}
 
-		if (element.isBoundedDelayMarker()) {
-			if (element.asBoundedDelayMarker().getEpoch() == -1) {
+		if (element.isEndOfEpochMarker()) {
+
+			long newEpoch = element.asEndOfEpochMarker().getEpoch() + 1;
+			long oldEpoch = currentEpochAtChannel[channel];
+
+			// sanity check
+			if (element.asEndOfEpochMarker().getEpoch() == -1) {
 				throw new RuntimeException("Epoch not initialized properly!");
 			}
-			long newEpoch = element.asBoundedDelayMarker().getEpoch() + 1;
-
-			if (newEpoch != currentEpochAtChannel[channel] + 1) {
+			// sanity check
+			if (newEpoch != oldEpoch + 1) {
 				throw new RuntimeException("new epoch " + newEpoch + " != epoch + 1: " + (epoch + 1));
 			}
 
+			// update per channel epochs
 			currentEpochAtChannel[channel] = newEpoch;
 
-			Map<Integer, Long> m = new HashMap<>();
-			for (int i = 0; i < numProducers; i++) {
-				m.put(i, 0L);
-			}
-
+			// if another channel has already seen events from later epochs
+			// this is already initialized and we can't override it.
+			// otherwise if our channel is the first to reach this epoch
+			// we need to initalize the last array
 			if (latest.get(newEpoch) == null) {
 				Long[] lastest = new Long[numProducers];
 				Arrays.fill(lastest, 0L);
@@ -159,14 +168,6 @@ public class BetterBiasAlgorithm extends Chainable {
 		}
 
 		return minValue > currentEpoch;
-	}
-
-	private void updateLatestInEpoch(int channel, long epoch, long curr) {
-		long prev = latest.get(epoch)[channel];
-		if (prev > curr) {
-			throw new RuntimeException("Prev > curr!! " + prev + " > " + curr);
-		}
-		latest.get(epoch)[channel] = curr;
 	}
 
 	private void enqueue(long epoch, QueueElem e) {

@@ -94,9 +94,9 @@ public class OneInputStreamOperatorAdapter<IN> extends Chainable {
 				operator.setKeyContextElement1(e.asRecord());
 				operator.processElement(e.asRecord());
 			}
-		} else if (elem.isBoundedDelayMarker()) {
+		} else if (elem.isEndOfEpochMarker()) {
 			synchronized (lock) {
-				operator.processBoundedDelayMarker(elem.asBoundedDelayMarker());
+				operator.processBoundedDelayMarker(elem.asEndOfEpochMarker());
 			}
 		}
 	}

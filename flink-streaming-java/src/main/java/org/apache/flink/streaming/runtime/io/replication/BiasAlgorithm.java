@@ -112,7 +112,7 @@ public final class BiasAlgorithm extends Chainable {
 		last[q.channel] = q.timestamp;
 
 		if (this.hasNext()) {
-			if (q.value.isBoundedDelayMarker()) {
+			if (q.value.isEndOfEpochMarker()) {
 				newEpoch();
 			}
 			this.getNext().accept(q.value, q.channel);

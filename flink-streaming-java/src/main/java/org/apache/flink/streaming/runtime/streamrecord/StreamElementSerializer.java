@@ -109,7 +109,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			StreamRecord<T> fromRecord = from.asRecord();
 			return fromRecord.copy(typeSerializer.copy(fromRecord.getValue()));
 		}
-		else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker() || from.isBoundedDelayMarker()) {
+		else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker() || from.isEndOfEpochMarker()) {
 			// is immutable
 			return from;
 		}
@@ -127,7 +127,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			T valueCopy = typeSerializer.copy(fromRecord.getValue(), reuseRecord.getValue());
 			fromRecord.copyTo(valueCopy, reuseRecord);
 			return reuse;
-		} else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker() || from.isBoundedDelayMarker()) {
+		} else if (from.isWatermark() || from.isStreamStatus() || from.isLatencyMarker() || from.isEndOfEpochMarker()) {
 			// is immutable
 			return from;
 		}
@@ -228,11 +228,11 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			target.writeLong(value.getDeduplicationTimestamp());
 			target.writeLong(value.getCurrentTs());
 			target.writeLong(value.getPreviousTs());
-		} else if (value.isBoundedDelayMarker()) {
+		} else if (value.isEndOfEpochMarker()) {
 			target.write(TAG_BOUNDED_DELAY_MARKER);
 			target.writeLong(value.getDeduplicationTimestamp());
 			target.writeLong(value.getCurrentTs());
-			target.writeLong(value.asBoundedDelayMarker().getEpoch());
+			target.writeLong(value.asEndOfEpochMarker().getEpoch());
 			target.writeLong(value.getPreviousTs());
 		} else {
 			throw new RuntimeException();

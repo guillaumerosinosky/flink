@@ -64,7 +64,7 @@ public abstract class StreamElement {
 		return getClass() == LatencyMarker.class;
 	}
 
-	public final boolean isBoundedDelayMarker() {
+	public final boolean isEndOfEpochMarker() {
 		return getClass() == EndOfEpochMarker.class;
 	}
 
@@ -105,7 +105,7 @@ public abstract class StreamElement {
 		return (LatencyMarker) this;
 	}
 
-	public final EndOfEpochMarker asBoundedDelayMarker() {
+	public final EndOfEpochMarker asEndOfEpochMarker() {
 		return (EndOfEpochMarker) this;
 	}
 

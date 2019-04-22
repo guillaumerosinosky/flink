@@ -134,8 +134,8 @@ public final class BiasAlgorithmMultithreaded extends Chainable {
 		last[q.channel] = q.timestamp;
 
 		if (this.hasNext()) {
-			if (q.value.isBoundedDelayMarker()) {
-				newEpoch(q.value.asBoundedDelayMarker(), q.channel);
+			if (q.value.isEndOfEpochMarker()) {
+				newEpoch(q.value.asEndOfEpochMarker(), q.channel);
 			}
 			this.getNext().accept(q.value, q.channel);
 		}

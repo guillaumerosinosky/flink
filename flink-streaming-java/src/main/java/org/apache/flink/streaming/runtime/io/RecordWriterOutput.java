@@ -182,7 +182,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	private void setup(StreamElement element) {
-		if (element.isBoundedDelayMarker()) {
+		if (element.isEndOfEpochMarker()) {
 			element.setPreviousTimestamp(Long.MAX_VALUE);
 			element.setCurrentTimestamp(Long.MAX_VALUE);
 		} else if (this.isSource) {

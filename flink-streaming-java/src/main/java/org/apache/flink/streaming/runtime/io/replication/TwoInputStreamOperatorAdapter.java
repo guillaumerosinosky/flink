@@ -6,7 +6,6 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.StreamTwoInputProcessor;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
@@ -125,9 +124,9 @@ public class TwoInputStreamOperatorAdapter<IN1, IN2> extends Chainable {
 					streamOperator.processLatencyMarker2(element.asLatencyMarker());
 				}
 			}
-		} else if (element.isBoundedDelayMarker()) {
+		} else if (element.isEndOfEpochMarker()) {
 			synchronized (lock) {
-				streamOperator.processBoundedDelayMarker(element.asBoundedDelayMarker());
+				streamOperator.processBoundedDelayMarker(element.asEndOfEpochMarker());
 			}
 		} else if (element.isRecord()) {
 
