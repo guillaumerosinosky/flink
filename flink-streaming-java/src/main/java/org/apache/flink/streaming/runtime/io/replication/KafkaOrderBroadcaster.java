@@ -20,6 +20,9 @@ public class KafkaOrderBroadcaster implements OrderBroadcaster {
 	private final String topic;
 
 	public KafkaOrderBroadcaster(String topic) {
+
+		Thread.currentThread().setContextClassLoader(null);
+
 		this.topic = topic;
 		Properties props = new Properties();
 		props.put("bootstrap.servers", "localhost:9092");
@@ -35,14 +38,20 @@ public class KafkaOrderBroadcaster implements OrderBroadcaster {
 
 	@Override
 	public CompletableFuture<Acknowledge> broadcast(List<Integer> nextOrder) throws ExecutionException, InterruptedException {
-		LOG.info("Trying to broadcast order {} via kafka", nextOrder);
+
+		String nexts = nextOrder.stream().map(Object::toString).reduce((a, b) -> a + "," + b).get();
+
+		LOG.info("Broadcasting order {} to topic {}", nexts, topic);
 		ProducerRecord<String, String> record = new ProducerRecord<>(
 			topic,
 			"some-key",
-			nextOrder.toString()
+			nexts
 		);
+
 		this.producer.send(record).get();
-		LOG.info("Success - Trying to broadcast order {} via kafka", nextOrder);
+
+		LOG.info("Successfully broadcasted order {} to topic {}", nexts, topic);
+
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 }

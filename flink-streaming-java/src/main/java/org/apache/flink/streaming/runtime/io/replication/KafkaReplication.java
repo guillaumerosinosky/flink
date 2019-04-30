@@ -6,6 +6,7 @@ import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.leader.CancelLeadershipException;
+import org.apache.curator.framework.recipes.leader.LeaderSelector;
 import org.apache.curator.framework.recipes.leader.LeaderSelectorListener;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -49,7 +50,8 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		int numProducers,
 		OrderBroadcaster broadcaster,
 		int batchSize,
-		String topic
+		String topic,
+		CuratorFramework f
 	) {
 		this.broadcaster = broadcaster;
 		this.batchSize = batchSize;
@@ -61,7 +63,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		this.nextCandidates = new LinkedBlockingQueue<>();
 
 		for (int i = 0; i < numProducers; i++) {
-			this.queues[i] = new ArrayBlockingQueue<>(batchSize);
+			this.queues[i] = new LinkedBlockingQueue<>();
 		}
 
 		this.owningTaskName = Thread.currentThread().getName();
@@ -74,6 +76,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		props.put("group.id", UUID.randomUUID().toString());
 		props.put("enable.auto.commit", "true");
 		props.put("auto.commit.interval.ms", "1000");
+		props.put("auto.offset.reset", "earliest");
 		props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 		props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 		this.consumer = new KafkaConsumer<>(props);
@@ -83,6 +86,10 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 
 		Thread processor = new Thread(this::processInput, "active-replication-" + owningTaskName);
 		processor.start();
+
+		LeaderSelector leaderSelector = new LeaderSelector(f, "/flink/" + topic, this);
+		leaderSelector.autoRequeue();
+		leaderSelector.start();
 	}
 
 
@@ -99,6 +106,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	private void processInput() {
 		hasFailed = false;
 		while (!hasFailed || !stopProcessor) {
+			System.out.println("Polling");
 			ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 			for (ConsumerRecord<String, String> record : records) {
 				String next = record.value();
@@ -106,7 +114,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 					.mapToInt(Integer::valueOf)
 					.toArray();
 
-				LOG.info("Received order from kafka {}", Arrays.toString(nextChans));
+				LOG.info("At {}: Received order from kafka {}", owningTaskName, Arrays.toString(nextChans));
 
 				for (int chan : nextChans) {
 
@@ -139,30 +147,40 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	@Override
 	public void takeLeadership(CuratorFramework curatorFramework) throws Exception {
 		LOG.info("At {}: I became the leader", owningTaskName);
+
+		String previousName = Thread.currentThread().getName();
+		Thread.currentThread().setName("leader-for-" + owningTaskName);
 		try {
-			while (true) {
-				List<Integer> next = new ArrayList<>(batchSize);
+			broadcastOrder();
+		} catch (Throwable t) {
+			LOG.warn("Lost leadership because of {}", owningTaskName, t);
+			this.hasFailed = true;
+			Thread.currentThread().setName(previousName);
+			throw t;
+		}
+	}
 
-				boolean timeout = false;
-				while (next.size() < batchSize && !timeout) {
-					Integer n = this.nextCandidates.poll(1000, TimeUnit.MILLISECONDS);
-					if (n != null) {
-						next.add(n);
-					} else {
-						timeout = true;
-					}
-				}
+	@SuppressWarnings({"Duplicates"})
+	private void broadcastOrder() throws InterruptedException, java.util.concurrent.ExecutionException {
+		while (true) {
+			List<Integer> next = new ArrayList<>(batchSize);
 
-				if (next.size() > 0) {
-					LOG.info("At {}: Broadcasting {}", owningTaskName, next);
-					broadcaster.broadcast(next);
-					// this.acceptOrdering(next);
+			boolean timeout = false;
+
+			while (next.size() < batchSize && !timeout) {
+				Integer n = this.nextCandidates.poll(1000, TimeUnit.MILLISECONDS);
+				if (n != null) {
+					next.add(n);
+				} else {
+					timeout = true;
 				}
 			}
-		} catch (Throwable t) {
-			LOG.warn("At {}: Lost leadership because of {}", owningTaskName, t);
-			this.hasFailed = true;
-			throw t;
+
+			if (next.size() > 0) {
+				broadcaster.broadcast(next).get();
+			} else {
+				LOG.info("No next candidates to broadcast");
+			}
 		}
 	}
 

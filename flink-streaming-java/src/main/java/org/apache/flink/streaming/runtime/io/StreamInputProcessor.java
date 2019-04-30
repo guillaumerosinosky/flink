@@ -44,6 +44,8 @@ import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithmMultithreaded;
 import org.apache.flink.streaming.runtime.io.replication.Chainable;
 import org.apache.flink.streaming.runtime.io.replication.Deduplication;
+import org.apache.flink.streaming.runtime.io.replication.KafkaOrderBroadcaster;
+import org.apache.flink.streaming.runtime.io.replication.KafkaReplication;
 import org.apache.flink.streaming.runtime.io.replication.LeaderBasedReplication;
 import org.apache.flink.streaming.runtime.io.replication.LogicalChannelMapper;
 import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
@@ -56,6 +58,9 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -200,6 +205,14 @@ public class StreamInputProcessor<IN> {
 				break;
 			case NO_ORDERING:
 				merger = new NoOrder();
+				break;
+			case LEADER_KAFKA:
+				String topic = replicaGroup;
+				KafkaOrderBroadcaster broadcaster = new KafkaOrderBroadcaster(topic);
+				CuratorFramework f = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
+				f.start();
+				merger = new KafkaReplication(numLogicalChannels, broadcaster, 1, topic, f);
+
 				break;
 			default:
 				throw new RuntimeException("Unsupported algorithm " + algorithm);
