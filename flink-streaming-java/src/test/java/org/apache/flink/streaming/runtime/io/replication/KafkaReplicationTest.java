@@ -3,6 +3,10 @@ package org.apache.flink.streaming.runtime.io.replication;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.test.TestingServer;
 import org.junit.Test;
 
 import java.util.Random;
@@ -13,11 +17,16 @@ public class KafkaReplicationTest {
 
 	@Test
 	public void test() throws Exception {
-		String topic = "topic-for-operator-" + r.nextInt(1000);
-		KafkaOrderBroadcaster b = new KafkaOrderBroadcaster(topic);
-		KafkaReplication r = new KafkaReplication(2, b, 1, topic, f);
-		KafkaReplication r2 = new KafkaReplication(2, b, 1, topic, f);
 
+		TestingServer s = new TestingServer();
+
+		CuratorFramework f = CuratorFrameworkFactory.newClient(s.getConnectString(), new ExponentialBackoffRetry(10_000, 3));
+
+		String topic = "topic-for-operator-" + r.nextInt(1000);
+		KafkaOrderBroadcaster b = new KafkaOrderBroadcaster(topic, "localhost:9092");
+
+		KafkaReplication r = new KafkaReplication(2, b, 1, 100, topic, f, "localhost:9092", metrics);
+		KafkaReplication r2 = new KafkaReplication(2, b, 1, 100, topic, f, "localhost:9092", metrics);
 
 		r.setNext(new Chainable() {
 			@Override

@@ -16,20 +16,21 @@ public class KafkaOrderBroadcaster implements OrderBroadcaster {
 
 	private static final Logger LOG = LoggerFactory.getLogger(KafkaOrderBroadcaster.class);
 
-	private final KafkaProducer<String, String> producer;
+	private final KafkaProducer<String, Order> producer;
 	private final String topic;
 
-	public KafkaOrderBroadcaster(String topic) {
+	public KafkaOrderBroadcaster(String topic, String kafkaServer) {
 
 		Thread.currentThread().setContextClassLoader(null);
 
 		this.topic = topic;
 		Properties props = new Properties();
-		props.put("bootstrap.servers", "localhost:9092");
+		props.put("bootstrap.servers", kafkaServer);
 		props.put("acks", "all");
 		props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-		props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		props.put("value.serializer", "org.apache.flink.streaming.runtime.io.replication.OrderSerializer");
 		props.put("auto.create.topics.enable", "true");
+//		props.put("linger.ms", "10");
 
 		this.producer = new KafkaProducer<>(props);
 
@@ -39,18 +40,22 @@ public class KafkaOrderBroadcaster implements OrderBroadcaster {
 	@Override
 	public CompletableFuture<Acknowledge> broadcast(List<Integer> nextOrder) throws ExecutionException, InterruptedException {
 
-		String nexts = nextOrder.stream().map(Object::toString).reduce((a, b) -> a + "," + b).get();
+		int[] nexts = new int[nextOrder.size()];
 
-		LOG.info("Broadcasting order {} to topic {}", nexts, topic);
-		ProducerRecord<String, String> record = new ProducerRecord<>(
+		for (int i = 0; i < nextOrder.size(); i++) {
+			nexts[i] = nextOrder.get(i);
+		}
+
+		LOG.trace("Broadcasting order {} to topic {}", nexts, topic);
+		ProducerRecord<String, Order> record = new ProducerRecord<>(
 			topic,
 			"some-key",
-			nexts
+			new Order(System.currentTimeMillis(), nexts)
 		);
 
 		this.producer.send(record).get();
 
-		LOG.info("Successfully broadcasted order {} to topic {}", nexts, topic);
+		LOG.trace("Successfully broadcasted order {} to topic {}", nexts, topic);
 
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}

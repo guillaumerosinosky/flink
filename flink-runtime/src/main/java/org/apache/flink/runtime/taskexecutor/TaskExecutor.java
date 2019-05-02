@@ -528,7 +528,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				tdd.getProducedPartitions(),
 				tdd.getInputGates(),
 				tdd.getTargetSlotNumber(),
-				tdd.getReplicaGroup(),
+				jobInformation.getJobId() + "-" + tdd.getReplicaGroup(),
 				taskExecutorServices.getMemoryManager(),
 				taskExecutorServices.getIOManager(),
 				taskExecutorServices.getNetworkEnvironment(),

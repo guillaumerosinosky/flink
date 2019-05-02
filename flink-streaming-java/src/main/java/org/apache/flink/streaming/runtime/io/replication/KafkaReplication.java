@@ -1,5 +1,6 @@
 package org.apache.flink.streaming.runtime.io.replication;
 
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
@@ -22,10 +23,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 public class KafkaReplication extends Chainable implements LeaderSelectorListener {
 
@@ -34,12 +33,13 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 
 	private final BlockingQueue<Integer> nextCandidates;
 	private final BlockingQueue<Enqueued>[] queues;
-	private final BlockingQueue<Integer> nextChannels;
+	private final long kafkaTimeout;
 
 	private final OrderBroadcaster broadcaster;
 
 	private final String owningTaskName;
-	private final KafkaConsumer<String, String> consumer;
+	private final KafkaConsumer<String, Order> consumer;
+	private final TaskIOMetricGroup metrics;
 
 	private volatile boolean hasFailed;
 	private volatile boolean stopProcessor;
@@ -50,73 +50,86 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		int numProducers,
 		OrderBroadcaster broadcaster,
 		int batchSize,
+		long kafkaTimeout,
 		String topic,
-		CuratorFramework f
+		CuratorFramework f,
+		String kafkaServer,
+		TaskIOMetricGroup metrics
 	) {
+
 		this.broadcaster = broadcaster;
 		this.batchSize = batchSize;
+		this.kafkaTimeout = kafkaTimeout;
 
-		this.queues = new BlockingQueue[numProducers];
-
-		// TODO: Thesis - This has a capacity of Integer.MAX_VALUE and is not unbounded!
-		this.nextChannels = new LinkedBlockingQueue<>();
-		this.nextCandidates = new LinkedBlockingQueue<>();
-
-		for (int i = 0; i < numProducers; i++) {
-			this.queues[i] = new LinkedBlockingQueue<>();
-		}
-
-		this.owningTaskName = Thread.currentThread().getName();
+		this.metrics = metrics;
 
 		this.hasFailed = false;
 		this.stopProcessor = false;
 
+		this.owningTaskName = Thread.currentThread().getName();
+
+		this.nextCandidates = new LinkedBlockingQueue<>();
+
+		this.queues = new BlockingQueue[numProducers];
+		for (int i = 0; i < numProducers; i++) {
+			this.queues[i] = new LinkedBlockingQueue<>();
+		}
+
 		Properties props = new Properties();
-		props.put("bootstrap.servers", "localhost:9092");
+
+		props.put("bootstrap.servers", kafkaServer);
 		props.put("group.id", UUID.randomUUID().toString());
 		props.put("enable.auto.commit", "true");
 		props.put("auto.commit.interval.ms", "1000");
 		props.put("auto.offset.reset", "earliest");
 		props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-		props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+		props.put("value.deserializer", "org.apache.flink.streaming.runtime.io.replication.OrderSerializer");
+		props.put("batchSize", batchSize);
+
 		this.consumer = new KafkaConsumer<>(props);
 		this.consumer.subscribe(Lists.newArrayList(topic));
 
+		LOG.info("Using kafka ordering with timeout {} and batchsize {}", kafkaTimeout, batchSize);
+
 		LOG.info("Setup kafka consumer to read from topic {}", topic);
 
-		Thread processor = new Thread(this::processInput, "active-replication-" + owningTaskName);
+		Thread processor = new Thread(this::pollOrderings, "active-replication-" + owningTaskName);
 		processor.start();
 
 		LeaderSelector leaderSelector = new LeaderSelector(f, "/flink/" + topic, this);
 		leaderSelector.autoRequeue();
 		leaderSelector.start();
+
+		this.closables.add(leaderSelector);
 	}
 
 
+	@SuppressWarnings({"Duplicates"})
 	@Override
 	public void accept(StreamElement element, int channel) throws Exception {
 		checkFailure();
-		LOG.info("At {}: Adding element to queue", owningTaskName);
+
+		LOG.trace("Adding element to queue. Current queue length at channel {}: {}", channel, queues[channel].size());
+
 		Enqueued e = new Enqueued(element.getCurrentTs(), channel, element);
 		this.queues[channel].put(e);
 		this.nextCandidates.put(channel);
-		LOG.info("At {}: done adding element to queue", owningTaskName);
+
+		LOG.trace("Successfully added element to queue");
 	}
 
-	private void processInput() {
+	private void pollOrderings() {
 		hasFailed = false;
 		while (!hasFailed || !stopProcessor) {
-			System.out.println("Polling");
-			ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
-			for (ConsumerRecord<String, String> record : records) {
-				String next = record.value();
-				int[] nextChans = Arrays.stream(next.split(","))
-					.mapToInt(Integer::valueOf)
-					.toArray();
 
-				LOG.info("At {}: Received order from kafka {}", owningTaskName, Arrays.toString(nextChans));
+			ConsumerRecords<String, Order> records = consumer.poll(Duration.ofMillis(100));
 
-				for (int chan : nextChans) {
+			LOG.trace("Got {} records", records.count());
+			for (ConsumerRecord<String, Order> r : records) {
+
+				LOG.trace("Processing order from kafka {} with latency {}ms", Arrays.toString(r.value().order), System.currentTimeMillis() - r.value().created);
+
+				for (int chan : r.value().order) {
 
 					try {
 						Enqueued elem = queues[chan].take();
@@ -128,6 +141,8 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 						hasFailed = true;
 					}
 				}
+
+				LOG.trace("Delivered all events for received order {}", Arrays.toString(r.value().order));
 			}
 		}
 	}
@@ -138,22 +153,16 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		}
 	}
 
-	public void acceptOrdering(List<Integer> nextBatch) throws Exception {
-		checkFailure();
-		LOG.info("At {}: Accepting ordering {}", owningTaskName, nextBatch);
-		this.nextChannels.addAll(nextBatch);
-	}
-
 	@Override
 	public void takeLeadership(CuratorFramework curatorFramework) throws Exception {
-		LOG.info("At {}: I became the leader", owningTaskName);
+		LOG.info("took leadership");
 
 		String previousName = Thread.currentThread().getName();
 		Thread.currentThread().setName("leader-for-" + owningTaskName);
 		try {
 			broadcastOrder();
 		} catch (Throwable t) {
-			LOG.warn("Lost leadership because of {}", owningTaskName, t);
+			LOG.warn("Lost leadership because of {}", t);
 			this.hasFailed = true;
 			Thread.currentThread().setName(previousName);
 			throw t;
@@ -163,23 +172,19 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	@SuppressWarnings({"Duplicates"})
 	private void broadcastOrder() throws InterruptedException, java.util.concurrent.ExecutionException {
 		while (true) {
+
 			List<Integer> next = new ArrayList<>(batchSize);
-
-			boolean timeout = false;
-
-			while (next.size() < batchSize && !timeout) {
-				Integer n = this.nextCandidates.poll(1000, TimeUnit.MILLISECONDS);
-				if (n != null) {
-					next.add(n);
-				} else {
-					timeout = true;
-				}
-			}
+			this.nextCandidates.drainTo(next, batchSize);
 
 			if (next.size() > 0) {
+				long start = System.nanoTime();
 				broadcaster.broadcast(next).get();
+				long duration = System.nanoTime() - start;
+				LOG.trace("Broadcast took {} nanoseconds for {} elements", duration, next.size());
+
 			} else {
-				LOG.info("No next candidates to broadcast");
+				LOG.trace("No next candidates to broadcast");
+				Thread.sleep(1);
 			}
 		}
 	}

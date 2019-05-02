@@ -115,6 +115,7 @@ public class StreamInputProcessor<IN> {
 	private boolean isFinished;
 
 	private LeaderBasedReplication inputOrdering;
+	private CuratorFramework f;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -158,29 +159,29 @@ public class StreamInputProcessor<IN> {
 
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
 
-		ExecutionConfig.OrderingAlgorithm a = executionConfig.getOrderingAlgorithm();
-
 		this.first = buildProcessingStack(
-			a,
+			executionConfig,
 			inputGate.getUpstreamReplicationFactor(),
 			watermarkGauge,
 			streamStatusMaintainer,
 			checkpointLock,
 			rpcService,
 			replicaGroup,
-			executionAttempt
+			executionAttempt,
+			metrics
 		);
 	}
 
 	public Chainable buildProcessingStack(
-		ExecutionConfig.OrderingAlgorithm algorithm,
+		ExecutionConfig executionConfig,
 		int[] upstreamReplicationFactor,
 		WatermarkGauge gauge,
 		StreamStatusMaintainer maintainer,
 		Object checkpointLock,
 		RpcService rpcService,
 		String replicaGroup,
-		ExecutionAttemptID executionAttempt
+		ExecutionAttemptID executionAttempt,
+		TaskIOMetricGroup metrics
 	) throws Exception {
 
 		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
@@ -192,8 +193,8 @@ public class StreamInputProcessor<IN> {
 
 		Chainable merger;
 
-
-		switch (algorithm) {
+		LOG.info("{} Using algorithm for ordering {}", Thread.currentThread().getName(), executionConfig.getOrderingAlgorithm());
+		switch (executionConfig.getOrderingAlgorithm()) {
 			case BIAS:
 				merger = new BiasAlgorithm(numLogicalChannels);
 				break;
@@ -208,14 +209,18 @@ public class StreamInputProcessor<IN> {
 				break;
 			case LEADER_KAFKA:
 				String topic = replicaGroup;
-				KafkaOrderBroadcaster broadcaster = new KafkaOrderBroadcaster(topic);
-				CuratorFramework f = CuratorFrameworkFactory.newClient("localhost:2181", new ExponentialBackoffRetry(1000, 3));
+				int kafkaBatchSize = executionConfig.getKafkaBatchSize();
+				String kafkaServer = executionConfig.getKafkaServer();
+
+				KafkaOrderBroadcaster broadcaster = new KafkaOrderBroadcaster(topic, kafkaServer);
+				f = CuratorFrameworkFactory.newClient(executionConfig.getZkServer(), new ExponentialBackoffRetry(10_000, 3));
 				f.start();
-				merger = new KafkaReplication(numLogicalChannels, broadcaster, 1, topic, f);
+
+				merger = new KafkaReplication(numLogicalChannels, broadcaster, kafkaBatchSize, executionConfig.getKafkaTimeout(), topic, f, kafkaServer, metrics);
 
 				break;
 			default:
-				throw new RuntimeException("Unsupported algorithm " + algorithm);
+				throw new RuntimeException("Unsupported algorithm " + executionConfig.getOrderingAlgorithm());
 		}
 
 		mapper.setNext(dedup)
@@ -340,6 +345,10 @@ public class StreamInputProcessor<IN> {
 				buffer.recycleBuffer();
 			}
 			deserializer.clear();
+		}
+
+		if (f != null) {
+			f.close();
 		}
 
 		// cleanup the barrier handler resources

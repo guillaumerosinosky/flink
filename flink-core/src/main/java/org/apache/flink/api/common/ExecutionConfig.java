@@ -182,6 +182,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private OrderingAlgorithm orderingAlgorithm = OrderingAlgorithm.BIAS_THREADED;
 
+	private int kafkaBatchSize = 1000;
+
+	private String kafkaServer = "flink-thesis-kafka.default.svc.cluster.local:9092";
+
+	private String zkServer = "flink-thesis-kafka-zooke.default.svc.cluster.local:2181";
+
+	private long kafkaTimeout = 200;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -977,6 +985,38 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	public void setOrderingAlgorithm(OrderingAlgorithm orderingAlgorithm) {
 		this.orderingAlgorithm = orderingAlgorithm;
+	}
+
+	public int getKafkaBatchSize() {
+		return kafkaBatchSize;
+	}
+
+	public void setKafkaBatchSize(int kafkaBatchSize) {
+		this.kafkaBatchSize = kafkaBatchSize;
+	}
+
+	public String getKafkaServer() {
+		return kafkaServer;
+	}
+
+	public void setKafkaServer(String kafkaServer) {
+		this.kafkaServer = kafkaServer;
+	}
+
+	public String getZkServer() {
+		return zkServer;
+	}
+
+	public void setZkServer(String zkServer) {
+		this.zkServer = zkServer;
+	}
+
+	public long getKafkaTimeout() {
+		return kafkaTimeout;
+	}
+
+	public void setKafkaTimeout(long kafkaTimeout) {
+		this.kafkaTimeout = kafkaTimeout;
 	}
 
 	public enum OrderingAlgorithm {

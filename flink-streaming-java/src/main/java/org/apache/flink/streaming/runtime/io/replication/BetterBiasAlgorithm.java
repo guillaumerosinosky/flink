@@ -101,8 +101,6 @@ public class BetterBiasAlgorithm extends Chainable {
 
 		if (element.isEndOfEpochMarker()) {
 
-			epochStart[channel] = element.getCurrentTs();
-
 			final long newEpoch = element.getEpoch() + 1;
 
 			final long oldEpoch = currentEpochAtChannel[channel];

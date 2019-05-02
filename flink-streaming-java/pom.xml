@@ -147,12 +147,11 @@ under the License.
 							<goal>shade</goal>
 						</goals>
 						<configuration>
-							<relocations>
-								<relocation>
-									<pattern>org.apache.kafka</pattern>
-									<shadedPattern>org.shaded.apache.kafka</shadedPattern>
-								</relocation>
-							</relocations>
+							<artifactSet>
+								<excludes>
+									<exclude>org.apache.kafka:kafka-clients</exclude>
+								</excludes>
+							</artifactSet>
 						</configuration>
 					</execution>
 				</executions>
