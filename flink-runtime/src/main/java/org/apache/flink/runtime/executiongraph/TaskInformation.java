@@ -52,14 +52,19 @@ public class TaskInformation implements Serializable {
 
 	private final int replicationFactor;
 
+	private final int maxParallelism;
+	private int actualParallelism;
+
 	public TaskInformation(
 		JobVertexID jobVertexId,
 		String taskName,
 		int numberOfSubtasks,
 		int maxNumberOfSubtaks,
+		int maxParallelism,
 		String invokableClassName,
 		Configuration taskConfiguration,
-		int replicationFactor
+		int replicationFactor,
+		int actualParallelism
 	) {
 		this.jobVertexId = Preconditions.checkNotNull(jobVertexId);
 		this.taskName = Preconditions.checkNotNull(taskName);
@@ -68,6 +73,9 @@ public class TaskInformation implements Serializable {
 		this.invokableClassName = Preconditions.checkNotNull(invokableClassName);
 		this.taskConfiguration = Preconditions.checkNotNull(taskConfiguration);
 		this.replicationFactor = replicationFactor;
+		this.maxParallelism = maxParallelism;
+
+		this.actualParallelism = actualParallelism;
 	}
 
 	public JobVertexID getJobVertexId() {
@@ -96,5 +104,13 @@ public class TaskInformation implements Serializable {
 
 	public int getReplicationFactor() {
 		return replicationFactor;
+	}
+
+	public int getMaxParallelism() {
+		return maxParallelism;
+	}
+
+	public int getActualParallelism() {
+		return actualParallelism;
 	}
 }

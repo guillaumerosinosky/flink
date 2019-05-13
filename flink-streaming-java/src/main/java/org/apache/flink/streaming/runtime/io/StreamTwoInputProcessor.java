@@ -19,10 +19,9 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.metrics.Counter;
-import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -32,16 +31,19 @@ import org.apache.flink.runtime.io.network.api.serialization.SpillingAdaptiveSpa
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
-import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.replication.BetterBiasAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithm;
+import org.apache.flink.streaming.runtime.io.replication.BiasAlgorithmMultithreaded;
+import org.apache.flink.streaming.runtime.io.replication.Chainable;
 import org.apache.flink.streaming.runtime.io.replication.Deduplication;
-import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
+import org.apache.flink.streaming.runtime.io.replication.KafkaOrderBroadcaster;
+import org.apache.flink.streaming.runtime.io.replication.KafkaReplication;
 import org.apache.flink.streaming.runtime.io.replication.LogicalChannelMapper;
 import org.apache.flink.streaming.runtime.io.replication.TwoInputStreamOperatorAdapter;
 import org.apache.flink.streaming.runtime.io.replication.Utils;
@@ -53,13 +55,12 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.TwoInputStreamTask;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 
 import java.io.IOException;
 import java.util.Collection;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Input reader for {@link org.apache.flink.streaming.runtime.tasks.TwoInputStreamTask}.
@@ -83,6 +84,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate1;
 	private final DeserializationDelegate<StreamElement> deserializationDelegate2;
+	private final TwoInputStreamTask<IN1, IN2, ?> checkpointedTask;
+	private final TwoInputStreamOperator<IN1, IN2, ?> streamOperator;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
@@ -94,24 +97,32 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private boolean isFinished;
 
-	private final LogicalChannelMapper mapper;
+	private final Chainable first;
+
+	private CuratorFramework f;
 
 	@SuppressWarnings("unchecked")
 	public StreamTwoInputProcessor(
-			Collection<InputGate> inputGates1,
-			Collection<InputGate> inputGates2,
-			TypeSerializer<IN1> inputSerializer1,
-			TypeSerializer<IN2> inputSerializer2,
-			TwoInputStreamTask<IN1, IN2, ?> checkpointedTask,
-			CheckpointingMode checkpointMode,
-			Object lock,
-			IOManager ioManager,
-			Configuration taskManagerConfig,
-			StreamStatusMaintainer streamStatusMaintainer,
-			TwoInputStreamOperator<IN1, IN2, ?> streamOperator,
-			TaskIOMetricGroup metrics,
-			WatermarkGauge input1WatermarkGauge,
-			WatermarkGauge input2WatermarkGauge) throws IOException {
+		Collection<InputGate> inputGates1,
+		Collection<InputGate> inputGates2,
+		TypeSerializer<IN1> inputSerializer1,
+		TypeSerializer<IN2> inputSerializer2,
+		TwoInputStreamTask<IN1, IN2, ?> checkpointedTask,
+		CheckpointingMode checkpointMode,
+		Object lock,
+		IOManager ioManager,
+		Configuration taskManagerConfig,
+		StreamStatusMaintainer streamStatusMaintainer,
+		TwoInputStreamOperator<IN1, IN2, ?> streamOperator,
+		TaskIOMetricGroup metrics,
+		WatermarkGauge input1WatermarkGauge,
+		WatermarkGauge input2WatermarkGauge,
+		ExecutionConfig executionConfig,
+		String replicaGroup
+	) throws IOException {
+
+		this.checkpointedTask = checkpointedTask;
+		this.streamOperator = streamOperator;
 
 		final InputGate inputGate = InputGateUtil.createInputGate(inputGates1, inputGates2);
 
@@ -143,28 +154,104 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 		int numChannels = Utils.numLogicalChannels(inputGate.getUpstreamReplicationFactor());
 
-		// build up processing chain
-		LogicalChannelMapper mapper = new LogicalChannelMapper(inputGate.getUpstreamReplicationFactor());
+		int[] upstreamReplicationFactor = inputGate.getUpstreamReplicationFactor();
 
-		Deduplication deduplication = new Deduplication(numChannels);
-		BiasAlgorithm biasAlgorithm = new BiasAlgorithm(numChannels);
-		TwoInputStreamOperatorAdapter operatorAdapter = new TwoInputStreamOperatorAdapter(
-			streamOperator,
+		// build up processing chain
+		this.first = buildProcessingStack(
 			inputGate,
 			inputGates1,
 			inputGates2,
 			input1WatermarkGauge,
 			input2WatermarkGauge,
+			executionConfig,
+			upstreamReplicationFactor,
 			streamStatusMaintainer,
+			lock,
+			replicaGroup,
+			metrics
+		);
+	}
+
+	public Chainable buildProcessingStack(
+		InputGate combinedGate,
+		Collection<InputGate> gate1,
+		Collection<InputGate> gate2,
+		WatermarkGauge gauge1,
+		WatermarkGauge gauge2,
+		ExecutionConfig executionConfig,
+		int[] upstreamReplicationFactor,
+		StreamStatusMaintainer maintainer,
+		Object checkpointLock,
+		String replicaGroup,
+		TaskIOMetricGroup metrics
+	) {
+
+		int numLogicalChannels = Utils.numLogicalChannels(upstreamReplicationFactor);
+
+		Chainable mapper = new LogicalChannelMapper(upstreamReplicationFactor);
+		Chainable dedup = new Deduplication(numLogicalChannels);
+		Chainable adapter = createTwoInputStreamAdapter(combinedGate, gate1, gate2, gauge1, gauge2, maintainer, checkpointLock);
+		Chainable outTSUpdater = new StreamInputProcessor.OutTsUpdater(checkpointedTask);
+
+		Chainable merger;
+
+		switch (executionConfig.getOrderingAlgorithm()) {
+			case BIAS:
+				merger = new BiasAlgorithm(numLogicalChannels);
+				break;
+			case BIAS_THREADED:
+				merger = new BiasAlgorithmMultithreaded(numLogicalChannels);
+				break;
+			case BETTER_BIAS:
+				merger = new BetterBiasAlgorithm(numLogicalChannels);
+				break;
+			case NO_ORDERING:
+				merger = new StreamInputProcessor.NoOrder();
+				break;
+			case LEADER_KAFKA:
+				String topic = replicaGroup;
+				int kafkaBatchSize = executionConfig.getKafkaBatchSize();
+				String kafkaServer = executionConfig.getKafkaServer();
+
+				KafkaOrderBroadcaster broadcaster = new KafkaOrderBroadcaster(topic, kafkaServer);
+				f = CuratorFrameworkFactory.newClient(executionConfig.getZkServer(), new ExponentialBackoffRetry(10_000, 3));
+				f.start();
+
+				merger = new KafkaReplication(numLogicalChannels, broadcaster, kafkaBatchSize, executionConfig.getKafkaTimeout(), topic, f, kafkaServer, metrics);
+
+				break;
+			default:
+				throw new RuntimeException("Unsupported algorithm " + executionConfig.getOrderingAlgorithm());
+		}
+
+		mapper.setNext(dedup)
+			.setNext(merger)
+			.setNext(outTSUpdater)
+			.setNext(adapter);
+
+		return mapper;
+	}
+
+	public Chainable createTwoInputStreamAdapter(
+		InputGate combinedGate,
+		Collection<InputGate> inputGate1,
+		Collection<InputGate> inputGate2,
+		WatermarkGauge gauge1,
+		WatermarkGauge gauge2,
+		StreamStatusMaintainer maintainer,
+		Object lock
+	) {
+		return new TwoInputStreamOperatorAdapter<>(
+			this.streamOperator,
+			combinedGate,
+			inputGate1,
+			inputGate2,
+			gauge1,
+			gauge2,
+			maintainer,
 			lock
 		);
 
-		mapper
-			.setNext(deduplication)
-			.setNext(biasAlgorithm)
-			.setNext(operatorAdapter);
-
-		this.mapper = mapper;
 	}
 
 	public boolean processInput() throws Exception {
@@ -194,7 +281,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						? deserializationDelegate1.getInstance()
 						: deserializationDelegate2.getInstance();
 
-					this.mapper.accept(element, currentChannel);
+					this.first.accept(element, currentChannel);
 
 					if (element.isRecord()) {
 						return true;
@@ -229,7 +316,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		}
 	}
 
-	public void cleanup() throws IOException {
+	public void cleanup() throws Exception {
 		// clear the buffers first. this part should not ever fail
 		for (RecordDeserializer<?> deserializer : recordDeserializers) {
 			Buffer buffer = deserializer.getCurrentBuffer();
@@ -238,6 +325,14 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 			}
 			deserializer.clear();
 		}
+
+		if (f != null) {
+			f.close();
+		}
+
+		// cleanup the barrier handler resources
+		barrierHandler.cleanup();
+		this.first.closeAll();
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();

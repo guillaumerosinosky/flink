@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.deployment;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.blob.PermanentBlobService;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
@@ -45,14 +46,19 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private static final long serialVersionUID = -3233562176034358530L;
 
 	private final int replicaIndex;
+	private int operatorIndex;
 
 	public int getReplicaIndex() {
 		return replicaIndex;
 	}
 
+	public int getOperatorIndex() {
+		return operatorIndex;
+	}
+
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
-	 * org.apache.flink.runtime.blob.BlobServer} or not.
+	 * BlobServer} or not.
 	 *
 	 * @param <T>
 	 * 		type of the serialized value
@@ -63,7 +69,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	}
 
 	/**
-	 * A serialized value that is not offloaded to the {@link org.apache.flink.runtime.blob.BlobServer}.
+	 * A serialized value that is not offloaded to the {@link BlobServer}.
 	 *
 	 * @param <T>
 	 * 		type of the serialized value
@@ -87,7 +93,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	/**
 	 * Reference to a serialized value that was offloaded to the {@link
-	 * org.apache.flink.runtime.blob.BlobServer}.
+	 * BlobServer}.
 	 *
 	 * @param <T>
 	 * 		type of the serialized value
@@ -160,6 +166,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
 		int subtaskIndex,
+		int operatorIndex,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
@@ -173,6 +180,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			executionAttemptId,
 			allocationId,
 			subtaskIndex,
+			operatorIndex,
 			0,
 			"replica-group-id",
 			attemptNumber,
@@ -190,6 +198,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
 		int subtaskIndex,
+		int operatorIndex,
 		int replicaIndex,
 		String replicaGroup,
 		int attemptNumber,
@@ -197,6 +206,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+
+
+		this.operatorIndex = operatorIndex;
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 

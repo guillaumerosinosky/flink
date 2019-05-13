@@ -185,7 +185,7 @@ public class CollectionExecutor {
 		GenericDataSinkBase<IN> typedSink = (GenericDataSinkBase<IN>) sink;
 
 		// build the runtime context and compute broadcast variables, if necessary
-		TaskInfo taskInfo = new TaskInfo(typedSink.getName(), 1, 0, 1, 0);
+		TaskInfo taskInfo = new TaskInfo(typedSink.getName(), 1, 0, 1, 0, 1, 1, 0);
 		RuntimeUDFContext ctx;
 
 		MetricGroup metrics = new UnregisteredMetricsGroup();
@@ -205,7 +205,7 @@ public class CollectionExecutor {
 		@SuppressWarnings("unchecked")
 		GenericDataSourceBase<OUT, ?> typedSource = (GenericDataSourceBase<OUT, ?>) source;
 		// build the runtime context and compute broadcast variables, if necessary
-		TaskInfo taskInfo = new TaskInfo(typedSource.getName(), 1, 0, 1, 0);
+		TaskInfo taskInfo = new TaskInfo(typedSource.getName(), 1, 0, 1, 0, 1, 1, 0);
 		
 		RuntimeUDFContext ctx;
 
@@ -232,7 +232,7 @@ public class CollectionExecutor {
 		SingleInputOperator<IN, OUT, ?> typedOp = (SingleInputOperator<IN, OUT, ?>) operator;
 		
 		// build the runtime context and compute broadcast variables, if necessary
-		TaskInfo taskInfo = new TaskInfo(typedOp.getName(), 1, 0, 1, 0);
+		TaskInfo taskInfo = new TaskInfo(typedOp.getName(), 1, 0, 1, 0, 1, 1, 0);
 		RuntimeUDFContext ctx;
 
 		MetricGroup metrics = new UnregisteredMetricsGroup();
@@ -272,7 +272,7 @@ public class CollectionExecutor {
 		DualInputOperator<IN1, IN2, OUT, ?> typedOp = (DualInputOperator<IN1, IN2, OUT, ?>) operator;
 		
 		// build the runtime context and compute broadcast variables, if necessary
-		TaskInfo taskInfo = new TaskInfo(typedOp.getName(), 1, 0, 1, 0);
+		TaskInfo taskInfo = new TaskInfo(typedOp.getName(), 1, 0, 1, 0, 1, 1, 0);
 		RuntimeUDFContext ctx;
 
 		MetricGroup metrics = new UnregisteredMetricsGroup();

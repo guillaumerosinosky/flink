@@ -116,7 +116,7 @@ public class StateAssignmentOperation {
 		//1. first compute the new parallelism
 		checkParallelismPreconditions(operatorStates, executionJobVertex);
 
-		int newParallelism = executionJobVertex.getParallelism();
+		int newParallelism = executionJobVertex.getActualParallelism();
 
 		List<KeyGroupRange> keyGroupPartitions = createKeyGroupPartitions(
 			executionJobVertex.getMaxParallelism(),

@@ -263,9 +263,9 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 
 		// TODO: Thesis - Fix this w.r.t. parallelism and stuff!
 		final KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
-			taskInfo.getMaxNumberOfParallelSubtasks(),
-			taskInfo.getNumberOfParallelSubtasks(),
-			taskInfo.getIndexOfThisSubtask());
+			taskInfo.getMaxParallelism(),
+			taskInfo.getActualParallelism(),
+			taskInfo.getOperatorIndex());
 
 		BackendRestorerProcedure<AbstractKeyedStateBackend<K>, KeyedStateHandle> backendRestorer =
 			new BackendRestorerProcedure<>(
@@ -274,7 +274,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 					environment.getJobID(),
 					operatorIdentifierText,
 					keySerializer,
-					taskInfo.getMaxNumberOfParallelSubtasks(),
+					taskInfo.getMaxParallelism(),
 					keyGroupRange,
 					environment.getTaskKvStateRegistry(),
 					TtlTimeProvider.DEFAULT,

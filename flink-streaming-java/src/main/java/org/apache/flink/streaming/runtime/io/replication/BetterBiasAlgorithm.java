@@ -73,6 +73,17 @@ public class BetterBiasAlgorithm extends Chainable {
 		QueueElem e = new QueueElem(element, prev, curr, epoch, channel);
 		enqueue(epoch, e);
 
+		// TODO: Thesis - this circumvents a NPE in the BETTERCLOUD example
+		// but does it break semantics?
+		if (!latest.containsKey(epoch)) {
+			Long[] l = new Long[numProducers];
+			for (int i = 0; i < numProducers; i++) {
+				l[i] = 0L;
+			}
+			latest.put(epoch, l);
+
+		}
+
 		// sanity check
 		if (latest.get(epoch)[channel] > curr) {
 			throw new RuntimeException("Previous last value is bigger than current last value");

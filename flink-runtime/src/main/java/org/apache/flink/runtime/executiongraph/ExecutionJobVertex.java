@@ -130,6 +130,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	private final int numExecutionVertices;
 
+	private final int actualParallelism;
+
 	private int maxParallelism;
 
 	/**
@@ -224,7 +226,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		// if no max parallelism was configured by the user, we calculate and set a default
 		int maxParallelismInternal = maxParallelismConfigured
 			? configuredMaxParallelism
-			: KeyGroupRangeAssignment.computeDefaultMaxParallelism(numExecutionVertices);
+			: KeyGroupRangeAssignment.computeDefaultMaxParallelism(numExecutionVertices / replicationFactor);
 
 		setMaxParallelismInternal(maxParallelismInternal);
 
@@ -232,15 +234,16 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		this.maxNumExecutionVertices = this.maxParallelism * replicationFactor;
 
 		// verify that our parallelism is not higher than the maximum parallelism
-		if (numExecutionVertices > this.maxParallelism) {
-			throw new JobException(
-				String.format("Vertex %s's parallelism (%s) is higher than the max parallelism (%s). Please lower the parallelism or increase the max parallelism.",
-					jobVertex.getName(),
-					numExecutionVertices,
-					this.maxParallelism));
-		}
+//		if (numExecutionVertices > this.maxParallelism) {
+//			throw new JobException(
+//				String.format("Vertex %s's parallelism (%s) is higher than the max parallelism (%s). Please lower the parallelism or increase the max parallelism.",
+//					jobVertex.getName(),
+//					numExecutionVertices,
+//					this.maxParallelism));
+//		}
 
 		this.parallelism = numExecutionVertices;
+		this.actualParallelism = numExecutionVertices / replicationFactor;
 
 		this.serializedTaskInformation = null;
 
@@ -290,6 +293,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 					this,
 					subtaskIndex,
 					replicaIndex,
+				operatorIndex,
 					replicaGroup,
 					producedDataSets,
 					timeout,
@@ -469,9 +473,11 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 					jobVertex.getName(),
 					numberOfSubtasks,
 					maxNumberOfSubtasks,
+					maxParallelism,
 					jobVertex.getInvokableClassName(),
 					jobVertex.getConfiguration(),
-					replicationFactor
+					replicationFactor,
+					getActualParallelism()
 				);
 
 				taskInformationOrBlobKey = BlobWriter.serializeAndTryOffload(
@@ -808,5 +814,9 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 
 		return expanded;
+	}
+
+	public int getActualParallelism() {
+		return actualParallelism;
 	}
 }

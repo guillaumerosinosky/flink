@@ -280,6 +280,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
 		int subtaskIndex,
+		int operatorIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
@@ -320,7 +321,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				subtaskIndex,
 				taskInformation.getNumberOfSubtasks(),
 				attemptNumber,
-				String.valueOf(slotAllocationId));
+				String.valueOf(slotAllocationId),
+				taskInformation.getMaxParallelism(),
+				taskInformation.getActualParallelism(),
+				operatorIndex
+			);
 
 		this.jobId = jobInformation.getJobId();
 		this.vertexId = taskInformation.getJobVertexId();

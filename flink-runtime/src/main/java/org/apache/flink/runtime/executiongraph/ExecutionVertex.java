@@ -109,6 +109,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	/** The current or latest execution attempt of this vertex's task. */
 	private volatile Execution currentExecution;	// this field must never be null
+	private int operatorIndex;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -126,6 +127,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			jobVertex,
 			subTaskIndex,
 			0, // default replica index
+			0,
 			producedDataSets,
 			timeout
 		);
@@ -139,6 +141,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		ExecutionJobVertex jobVertex,
 		int subTaskIndex,
 		int replicaIndex,
+		int operatorIndex,
 		IntermediateResult[] producedDataSets,
 		Time timeout
 	) {
@@ -147,6 +150,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			jobVertex,
 			subTaskIndex,
 			replicaIndex,
+			operatorIndex,
 			"replica-group-id",
 			producedDataSets,
 			timeout,
@@ -171,6 +175,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		ExecutionJobVertex jobVertex,
 		int subTaskIndex,
 		int replicaIndex,
+		int operatorIndex,
 		String replicaGroup,
 		IntermediateResult[] producedDataSets,
 		Time timeout,
@@ -183,6 +188,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		this.subTaskIndex = subTaskIndex;
 		this.replicaIndex = replicaIndex;
 		this.replicaGroup = replicaGroup;
+		this.operatorIndex = operatorIndex;
 
 		this.taskNameWithSubtask = String.format("%s (%d/%d)",
 				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
@@ -278,6 +284,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@Override
 	public int getParallelSubtaskIndex() {
 		return this.subTaskIndex;
+	}
+
+	public int getOperatorIndex() {
+		return this.operatorIndex;
 	}
 
 	public int getNumberOfInputs() {
@@ -918,6 +928,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			executionId,
 			targetSlot.getAllocationId(),
 			getParallelSubtaskIndex(),
+			getOperatorIndex(),
 			getReplicaIndex(),
 			getReplicaGroup(),
 			attemptNumber,

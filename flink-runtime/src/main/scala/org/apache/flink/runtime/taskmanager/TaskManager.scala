@@ -1228,6 +1228,7 @@ class TaskManager(
         tdd.getExecutionAttemptId,
         tdd.getAllocationId,
         tdd.getSubtaskIndex,
+        tdd.getSubtaskIndex,
         tdd.getAttemptNumber,
         tdd.getProducedPartitions,
         tdd.getInputGates,

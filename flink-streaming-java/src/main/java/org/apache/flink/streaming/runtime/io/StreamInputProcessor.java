@@ -231,7 +231,7 @@ public class StreamInputProcessor<IN> {
 		return mapper;
 	}
 
-	private static class NoOrder extends Chainable {
+	static class NoOrder extends Chainable {
 		@Override
 		public void accept(StreamElement element, int channel) throws Exception {
 			if (this.hasNext()) {
@@ -240,7 +240,7 @@ public class StreamInputProcessor<IN> {
 		}
 	}
 
-	private static class OutTsUpdater extends Chainable {
+	public static class OutTsUpdater extends Chainable {
 
 		private final StreamTask task;
 		Map<Integer, Long> sentTs;

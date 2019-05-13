@@ -38,20 +38,30 @@ public class TaskInfo {
 	private final int indexOfSubtask;
 	private final int numberOfParallelSubtasks;
 	private final int attemptNumber;
+	private final int maxParallelism;
+	private int actualParallelism;
+	private int operatorIndex;
 
 	public TaskInfo(
 		String taskName,
 		int maxNumberOfParallelSubtasks,
 		int indexOfSubtask,
 		int numberOfParallelSubtasks,
-		int attemptNumber) {
+		int attemptNumber,
+		int maxParallelism,
+		int actualParallelism,
+		int operatorIndex
+	) {
 		this(
 			taskName,
 			maxNumberOfParallelSubtasks,
 			indexOfSubtask,
 			numberOfParallelSubtasks,
 			attemptNumber,
-			"UNKNOWN");
+			"UNKNOWN",
+			maxParallelism,
+			actualParallelism,
+			operatorIndex);
 	}
 
 	public TaskInfo(
@@ -60,7 +70,12 @@ public class TaskInfo {
 		int indexOfSubtask,
 		int numberOfParallelSubtasks,
 		int attemptNumber,
-		String allocationIDAsString) {
+		String allocationIDAsString,
+		int maxParallelism,
+		int actualParallelism,
+		int operatorIndex
+	) {
+		this.maxParallelism = maxParallelism;
 
 		checkArgument(indexOfSubtask >= 0, "Task index must be a non-negative number.");
 		checkArgument(maxNumberOfParallelSubtasks >= 1, "Max parallelism must be a positive number.");
@@ -75,6 +90,8 @@ public class TaskInfo {
 		this.attemptNumber = attemptNumber;
 		this.taskNameWithSubtasks = taskName + " (" + (indexOfSubtask + 1) + '/' + numberOfParallelSubtasks + ')';
 		this.allocationIDAsString = checkNotNull(allocationIDAsString);
+		this.actualParallelism = actualParallelism;
+		this.operatorIndex = operatorIndex;
 	}
 
 	/**
@@ -140,5 +157,17 @@ public class TaskInfo {
 	 */
 	public String getAllocationIDAsString() {
 		return allocationIDAsString;
+	}
+
+	public int getMaxParallelism() {
+		return maxParallelism;
+	}
+
+	public int getActualParallelism() {
+		return actualParallelism;
+	}
+
+	public int getOperatorIndex() {
+		return operatorIndex;
 	}
 }
