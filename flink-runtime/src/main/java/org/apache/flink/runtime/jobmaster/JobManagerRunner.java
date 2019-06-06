@@ -189,6 +189,13 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 				shutdown = true;
 
 				setNewLeaderGatewayFuture();
+
+				try {
+					Thread.sleep(500);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+
 				leaderGatewayFuture.completeExceptionally(new FlinkException("JobMaster has been shut down."));
 
 				final CompletableFuture<Void> jobManagerTerminationFuture = jobMasterService.closeAsync();
