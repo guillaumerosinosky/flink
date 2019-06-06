@@ -46,6 +46,8 @@ import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -67,6 +69,7 @@ public class ZooKeeperLeaderElectionITCase extends TestLogger {
 	private static final Duration TEST_TIMEOUT = Duration.ofMinutes(5L);
 
 	private static final Time RPC_TIMEOUT = Time.minutes(1L);
+	private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperLeaderElectionITCase.class);
 
 	private static TestingServer zkServer;
 
@@ -137,8 +140,10 @@ public class ZooKeeperLeaderElectionITCase extends TestLogger {
 
 				final Dispatcher dispatcher = leadingDispatcherResourceManagerComponent.getDispatcher();
 
+				LOG.info("\ni = {}. Waiting for job to run: {}\n", i, leadingDispatcherResourceManagerComponent.getDispatcher());
 				CommonTestUtils.waitUntilCondition(() -> dispatcher.requestJobStatus(jobGraph.getJobID(), RPC_TIMEOUT).get() == JobStatus.RUNNING, timeout, 50L);
 
+				LOG.info("\ni = {}. Closing async: {}\n", i, leadingDispatcherResourceManagerComponent.getDispatcher());
 				leadingDispatcherResourceManagerComponent.closeAsync();
 			}
 

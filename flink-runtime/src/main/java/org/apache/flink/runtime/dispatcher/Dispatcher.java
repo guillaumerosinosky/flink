@@ -71,6 +71,9 @@ import org.apache.flink.util.function.CheckedSupplier;
 import org.apache.flink.util.function.FunctionUtils;
 import org.apache.flink.util.function.FunctionWithException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -132,6 +135,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	private CompletableFuture<Void> recoveryOperation = CompletableFuture.completedFuture(null);
 
+	private static final Logger LOG = LoggerFactory.getLogger(Dispatcher.class);
+
 	public Dispatcher(
 			RpcService rpcService,
 			String endpointId,
@@ -166,6 +171,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		this.runningJobsRegistry = highAvailabilityServices.getRunningJobsRegistry();
 
 		jobManagerRunnerFutures = new HashMap<>(16);
+		LOG.info("At {}: Creating new futures map", getFencingToken());
 
 		leaderElectionService = highAvailabilityServices.getDispatcherLeaderElectionService();
 
@@ -330,6 +336,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 		final CompletableFuture<JobManagerRunner> jobManagerRunnerFuture = createJobManagerRunner(jobGraph);
 
+		LOG.info("At {}: Putting future for job {} into map", getFencingToken(), jobGraph.getJobID());
 		jobManagerRunnerFutures.put(jobGraph.getJobID(), jobManagerRunnerFuture);
 
 		return jobManagerRunnerFuture
@@ -337,6 +344,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			.whenCompleteAsync(
 				(ignored, throwable) -> {
 					if (throwable != null) {
+						LOG.info("1- At {}: Removing future for job {} from map", getFencingToken(), jobGraph.getJobID());
+						LOG.info("Stack: ", new RuntimeException("Here we are!"));
 						jobManagerRunnerFutures.remove(jobGraph.getJobID());
 					}
 				},
@@ -546,6 +555,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			final ArchivedExecutionGraph archivedExecutionGraph = archivedExecutionGraphStore.get(jobId);
 
 			if (archivedExecutionGraph == null) {
+				LOG.warn("KeySet of jobManagerRunnerFutures: {}", jobManagerRunnerFutures.keySet());
 				return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
 			} else {
 				return CompletableFuture.completedFuture(JobResult.createFrom(archivedExecutionGraph));
@@ -625,6 +635,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	}
 
 	private CompletableFuture<Void> removeJob(JobID jobId, boolean cleanupHA) {
+		LOG.info("2- At {}: Removing future for job {} from map", getFencingToken(), jobId);
+		LOG.info("Stack: ", new RuntimeException("Here we are!"));
 		CompletableFuture<JobManagerRunner> jobManagerRunnerFuture = jobManagerRunnerFutures.remove(jobId);
 
 		final CompletableFuture<Void> jobManagerRunnerTerminationFuture;
@@ -801,6 +813,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		final CompletableFuture<JobManagerRunner> jobManagerRunnerFuture = jobManagerRunnerFutures.get(jobId);
 
 		if (jobManagerRunnerFuture == null) {
+			LOG.warn("At {} - No jobManagerRunnerFuture for job {}", getFencingToken(), jobId);
 			return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
 		} else {
 			final CompletableFuture<JobMasterGateway> leaderGatewayFuture = jobManagerRunnerFuture.thenCompose(JobManagerRunner::getLeaderGatewayFuture);
@@ -810,6 +823,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 					if (jobManagerRunnerFutures.containsKey(jobId)) {
 						return jobMasterGateway;
 					} else {
+						LOG.warn("At {} - Retrieved jobmastergateway does not belong to a running jobmaster anymore", getFencingToken());
 						throw new CompletionException(new FlinkJobNotFoundException(jobId));
 					}
 				},
