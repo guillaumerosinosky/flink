@@ -86,6 +86,6 @@ public class ProgramInvocationException extends Exception {
 	 *        The exception that causes the program invocation to fail.
 	 */
 	public ProgramInvocationException(String message, JobID jobID, Throwable cause) {
-		super(message + " (JobID: " + jobID + ")", cause);
+		super(message + " (JobID: " + jobID + ")" + ". Cause: " + Thread.currentThread().getStackTrace().toString(), cause);
 	}
 }
