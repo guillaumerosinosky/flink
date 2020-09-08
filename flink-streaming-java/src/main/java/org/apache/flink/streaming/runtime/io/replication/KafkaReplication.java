@@ -28,7 +28,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class KafkaReplication extends Chainable implements LeaderSelectorListener {
 
-	private static final Logger LOG = LoggerFactory.getLogger(LeaderBasedReplication.class);
+	private static final Logger LOG = LoggerFactory.getLogger(KafkaReplication.class);
 	private final int batchSize;
 
 	private final BlockingQueue<Integer> nextCandidates;
