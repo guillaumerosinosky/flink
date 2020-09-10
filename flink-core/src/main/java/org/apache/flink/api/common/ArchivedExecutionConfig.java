@@ -39,6 +39,7 @@ public class ArchivedExecutionConfig implements Serializable {
 	private final int parallelism;
 	private final boolean objectReuseEnabled;
 	private final Map<String, String> globalJobParameters;
+	private final int replicationFactor;
 
 	public ArchivedExecutionConfig(ExecutionConfig ec) {
 		executionMode = ec.getExecutionMode().name();
@@ -55,6 +56,7 @@ public class ArchivedExecutionConfig implements Serializable {
 		} else {
 			globalJobParameters = Collections.emptyMap();
 		}
+		replicationFactor = ec.getReplicationFactor();
 	}
 
 	public ArchivedExecutionConfig(
@@ -62,12 +64,14 @@ public class ArchivedExecutionConfig implements Serializable {
 			String restartStrategyDescription,
 			int parallelism,
 			boolean objectReuseEnabled,
-			Map<String, String> globalJobParameters) {
+			Map<String, String> globalJobParameters,
+			int replicationFactor) {
 		this.executionMode = executionMode;
 		this.restartStrategyDescription = restartStrategyDescription;
 		this.parallelism = parallelism;
 		this.objectReuseEnabled = objectReuseEnabled;
 		this.globalJobParameters = globalJobParameters;
+		this.replicationFactor = replicationFactor;
 	}
 
 	public String getExecutionMode() {
@@ -80,6 +84,10 @@ public class ArchivedExecutionConfig implements Serializable {
 
 	public int getParallelism() {
 		return parallelism;
+	}
+
+	public int getReplicationFactor() {
+		return replicationFactor;
 	}
 
 	public boolean getObjectReuseEnabled() {

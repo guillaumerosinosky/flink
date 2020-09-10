@@ -190,6 +190,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private long kafkaTimeout = 200;
 
+	private int replicationFactor = 2;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -993,6 +995,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	public void setKafkaBatchSize(int kafkaBatchSize) {
 		this.kafkaBatchSize = kafkaBatchSize;
+	}
+
+	public int getReplicationFactor() {
+		return replicationFactor;
+	}
+
+	public void setReplicationFactor(int replicationFactor) {
+		this.replicationFactor = replicationFactor;
 	}
 
 	public String getKafkaServer() {

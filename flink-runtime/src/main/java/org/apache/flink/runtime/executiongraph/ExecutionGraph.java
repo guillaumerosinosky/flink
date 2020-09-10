@@ -834,7 +834,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			if (jobVertex.isInputVertex() || jobVertex.isOutputVertex()) {
 				jobVertex.setReplicationFactor(1);
 			} else {
-				jobVertex.setReplicationFactor(2);
+				LOG.info("Set replication factor to {}", this.getArchivedExecutionConfig().getReplicationFactor());
+				jobVertex.setReplicationFactor(this.getArchivedExecutionConfig().getReplicationFactor());
+				//jobVertex.setReplicationFactor(2);
 			}
 
 			// create the execution job vertex and attach it to the graph
