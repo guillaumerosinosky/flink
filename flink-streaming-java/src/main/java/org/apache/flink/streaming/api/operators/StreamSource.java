@@ -84,10 +84,10 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 
 		IdleMarksEmitter<OUT> idleMarksEmitter = null;
 		if (getExecutionConfig().isIdleMarksEnabled()) {
-			LOG.info("Starting bounded delay emitter with interval 200ms");
+			LOG.info(String.format("Starting bounded delay emitter with interval %dms", getExecutionConfig().getIdleMarksInterval()));
 			idleMarksEmitter = new IdleMarksEmitter<>(
 				collector,
-				200,
+				getExecutionConfig().getIdleMarksInterval(),
 				lockingObject
 			);
 		}

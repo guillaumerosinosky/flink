@@ -192,6 +192,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private int replicationFactor = 2;
 
+	private long idleMarksInterval = 200;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -913,6 +915,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	public void enableIdleMarks() {
 		this.isIdleMarksEnabled = true;
+	}
+
+	public long getIdleMarksInterval() {
+		return this.idleMarksInterval;
+	}
+
+	public void setIdleMarksInterval(long idleMarksInterval) {
+		this.idleMarksInterval = idleMarksInterval;
 	}
 
 	@Override
