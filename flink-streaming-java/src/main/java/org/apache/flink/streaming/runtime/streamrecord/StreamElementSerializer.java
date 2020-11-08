@@ -257,12 +257,13 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			long dedupTimestamp = source.readLong();
 			long sentTimestamp = source.readLong();
 			long previousTs = source.readLong();
+			long epoch = source.readLong();			
 
 			StreamRecord<T> rec = new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
 			rec.setDeduplicationTimestamp(dedupTimestamp);
 			rec.setCurrentTimestamp(sentTimestamp);
 			rec.setPreviousTimestamp(previousTs);
-			rec.setEpoch(source.readLong());
+			rec.setEpoch(epoch);
 			return rec;
 		} else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
 
