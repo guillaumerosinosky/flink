@@ -325,37 +325,44 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			long timestamp = source.readLong();
 			long dedupTimestamp = source.readLong();
 			long sentTimestamp = source.readLong();
+			long previousTs = source.readLong();			
+			long epoch = source.readLong();
 
 			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
 			reuseRecord.replace(value, timestamp);
 			reuseRecord.setDeduplicationTimestamp(dedupTimestamp);
 			reuseRecord.setCurrentTimestamp(sentTimestamp);
-			reuseRecord.setPreviousTimestamp(source.readLong());
-			reuseRecord.setEpoch(source.readLong());
+			reuseRecord.setPreviousTimestamp(previousTs);
+			reuseRecord.setEpoch(epoch);
 			return reuseRecord;
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
 			long dedupTimestamp = source.readLong();
 			long sentTimestamp = source.readLong();
+			long previousTs = source.readLong();			
+			long epoch = source.readLong();
 			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
 			reuseRecord.replace(value);
 			reuseRecord.setDeduplicationTimestamp(dedupTimestamp);
 			reuseRecord.setCurrentTimestamp(sentTimestamp);
-			reuseRecord.setPreviousTimestamp(source.readLong());
-			reuseRecord.setEpoch(source.readLong());
+			reuseRecord.setPreviousTimestamp(previousTs);
+			reuseRecord.setEpoch(epoch);
 			return reuseRecord;
 		}
 		else if (tag == TAG_WATERMARK) {
 			long value = source.readLong();
 			long dedupTs = source.readLong();
 			long sentTs = source.readLong();
+			long previousTs = source.readLong();			
+			long epoch = source.readLong();
+
 			Watermark watermark = new Watermark(value);
 			watermark.setDeduplicationTimestamp(dedupTs);
 			watermark.setCurrentTimestamp(sentTs);
-			watermark.setPreviousTimestamp(source.readLong());
-			watermark.setEpoch(source.readLong());
+			watermark.setPreviousTimestamp(previousTs);
+			watermark.setEpoch(epoch);
 			return watermark;
 		}
 		else if (tag == TAG_LATENCY_MARKER) {
