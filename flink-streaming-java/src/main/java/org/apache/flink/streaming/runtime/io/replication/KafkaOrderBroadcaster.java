@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.lang.ClassLoader;
 
 public class KafkaOrderBroadcaster implements OrderBroadcaster {
 
@@ -21,7 +22,7 @@ public class KafkaOrderBroadcaster implements OrderBroadcaster {
 
 	public KafkaOrderBroadcaster(String topic, String kafkaServer) {
 
-		Thread.currentThread().setContextClassLoader(null);
+		ClassLoader originClassLoader = Thread.currentThread().getContextClassLoader();
 
 		this.topic = topic;
 		Properties props = new Properties();
@@ -32,8 +33,9 @@ public class KafkaOrderBroadcaster implements OrderBroadcaster {
 		props.put("auto.create.topics.enable", "true");
 //		props.put("linger.ms", "10");
 
+		Thread.currentThread().setContextClassLoader(null);
 		this.producer = new KafkaProducer<>(props);
-
+		Thread.currentThread().setContextClassLoader(originClassLoader);
 		LOG.info("Setup kafka producer to write to topic {}", topic);
 	}
 

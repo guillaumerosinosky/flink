@@ -86,14 +86,20 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		props.put("value.deserializer", "org.apache.flink.streaming.runtime.io.replication.OrderSerializer");
 		props.put("batchSize", batchSize);
 
+		ClassLoader originClassLoader = Thread.currentThread().getContextClassLoader();
+
+
+		Thread.currentThread().setContextClassLoader(null);
 		this.consumer = new KafkaConsumer<>(props);
 		this.consumer.subscribe(Lists.newArrayList(topic));
-
+		
 		LOG.info("Using kafka ordering with timeout {} and batchsize {}", kafkaTimeout, batchSize);
 
 		LOG.info("Setup kafka consumer to read from topic {}", topic);
 
 		Thread processor = new Thread(this::pollOrderings, "active-replication-" + owningTaskName);
+		processor.setContextClassLoader(originClassLoader);
+		Thread.currentThread().setContextClassLoader(originClassLoader);
 		processor.start();
 
 		LeaderSelector leaderSelector = new LeaderSelector(f, "/flink/" + topic, this);
