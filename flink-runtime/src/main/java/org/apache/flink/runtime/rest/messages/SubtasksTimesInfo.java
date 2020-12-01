@@ -99,6 +99,8 @@ public class SubtasksTimesInfo implements ResponseBody {
 		public static final String FIELD_NAME_HOST = "host";
 		public static final String FIELD_NAME_DURATION = "duration";
 		public static final String FIELD_NAME_TIMESTAMPS = "timestamps";
+		public static final String FIELD_NAME_REPLICA_INDEX = "replicaIndex";
+		public static final String FIELD_NAME_OPERATOR_INDEX = "operatorIndex";
 
 		@JsonProperty(FIELD_NAME_SUBTASK)
 		private final int subtask;
@@ -112,15 +114,27 @@ public class SubtasksTimesInfo implements ResponseBody {
 		@JsonProperty(FIELD_NAME_TIMESTAMPS)
 		private final Map<ExecutionState, Long> timestamps;
 
+		@JsonProperty(FIELD_NAME_REPLICA_INDEX)
+		private int replicaIndex;
+
+		@JsonProperty(FIELD_NAME_OPERATOR_INDEX)
+		private int operatorIndex;
+
 		public SubtaskTimeInfo(
 				@JsonProperty(FIELD_NAME_SUBTASK) int subtask,
 				@JsonProperty(FIELD_NAME_HOST) String host,
 				@JsonProperty(FIELD_NAME_DURATION) long duration,
-				@JsonProperty(FIELD_NAME_TIMESTAMPS) Map<ExecutionState, Long> timestamps) {
+				@JsonProperty(FIELD_NAME_TIMESTAMPS) Map<ExecutionState, Long> timestamps,
+				@JsonProperty(FIELD_NAME_REPLICA_INDEX) int replicaIndex,
+				@JsonProperty(FIELD_NAME_OPERATOR_INDEX) int operatorIndex)
+		
+		{
 			this.subtask = subtask;
 			this.host = checkNotNull(host);
 			this.duration = duration;
 			this.timestamps = checkNotNull(timestamps);
+			this.replicaIndex = replicaIndex;
+			this.operatorIndex = operatorIndex;
 		}
 
 		@Override

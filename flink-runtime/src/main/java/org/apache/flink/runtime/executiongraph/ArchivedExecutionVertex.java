@@ -36,6 +36,10 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
 
 	private final ArchivedExecution currentExecution;    // this field must never be null
 
+	private final int replicaIndex;
+
+	private final int operatorIndex;
+
 	// ------------------------------------------------------------------------
 
 	public ArchivedExecutionVertex(ExecutionVertex vertex) {
@@ -43,15 +47,20 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
 		this.priorExecutions = vertex.getCopyOfPriorExecutionsList();
 		this.taskNameWithSubtask = vertex.getTaskNameWithSubtaskIndex();
 		this.currentExecution = vertex.getCurrentExecutionAttempt().archive();
+		this.replicaIndex = vertex.getReplicaIndex();
+		this.operatorIndex = vertex.getOperatorIndex();
 	}
 
 	public ArchivedExecutionVertex(
 			int subTaskIndex, String taskNameWithSubtask,
-			ArchivedExecution currentExecution, EvictingBoundedList<ArchivedExecution> priorExecutions) {
+			ArchivedExecution currentExecution, EvictingBoundedList<ArchivedExecution> priorExecutions,
+			int replicaIndex, int operatorIndex) {
 		this.subTaskIndex = subTaskIndex;
 		this.taskNameWithSubtask = taskNameWithSubtask;
 		this.currentExecution = currentExecution;
 		this.priorExecutions = priorExecutions;
+		this.replicaIndex = replicaIndex;
+		this.operatorIndex = operatorIndex;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -100,5 +109,15 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
 		} else {
 			throw new IllegalArgumentException("attempt does not exist");
 		}
+	}
+
+	@Override
+	public int getReplicaIndex() {
+		return replicaIndex;
+	}
+
+	@Override
+	public int getOperatorIndex() {
+		return operatorIndex;
 	}
 }

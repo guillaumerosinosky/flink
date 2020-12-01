@@ -118,7 +118,9 @@ public class SubtasksTimesHandler extends AbstractJobVertexHandler<SubtasksTimes
 				num++,
 				locationString,
 				duration,
-				timestampMap));
+				timestampMap,
+				vertex.getReplicaIndex(),
+				vertex.getOperatorIndex()));
 		}
 		return new SubtasksTimesInfo(id, name, now, subtasks);
 	}

@@ -82,4 +82,8 @@ public interface AccessExecutionVertex {
 	 * @return execution for the given attempt number
 	 */
 	AccessExecution getPriorExecutionAttempt(int attemptNumber);
+
+	int getReplicaIndex();
+
+	int getOperatorIndex();
 }
