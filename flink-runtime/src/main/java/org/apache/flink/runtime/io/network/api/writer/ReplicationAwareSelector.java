@@ -60,7 +60,7 @@ class ReplicationAwareSelector<T extends IOReadableWritable> implements ChannelS
 			}
 		}
 
-		logger.info("Mapping channels {} to replicated channels {}", virtualSelected, actual);
+		logger.trace("Mapping channels {} to replicated channels {}", virtualSelected, actual);
 		return actual;
 	}
 }
