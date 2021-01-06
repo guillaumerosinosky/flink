@@ -45,6 +45,8 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	private volatile boolean stopProcessor;
 	private List<AutoCloseable> closables = new LinkedList<>();
 
+	private volatile boolean isLeader;
+
 	@SuppressWarnings("unchecked")
 	public KafkaReplication(
 		int numProducers,
@@ -107,6 +109,8 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		leaderSelector.start();
 
 		this.closables.add(leaderSelector);
+
+		this.isLeader = false;
 	}
 
 
@@ -139,6 +143,10 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 
 					try {
 						Enqueued elem = queues[chan].take();
+						// remove corresponding next candidate if not the leader
+						if (!isLeader) {
+							this.nextCandidates.take();
+						}
 						if (hasNext()) {
 							this.getNext().accept(elem.value, elem.channel);
 						}
@@ -162,6 +170,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	@Override
 	public void takeLeadership(CuratorFramework curatorFramework) throws Exception {
 		LOG.info("took leadership");
+		this.isLeader = true;
 
 		String previousName = Thread.currentThread().getName();
 		Thread.currentThread().setName("leader-for-" + owningTaskName);
@@ -170,6 +179,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		} catch (Throwable t) {
 			LOG.warn("Lost leadership because of {}", t);
 			this.hasFailed = true;
+			this.isLeader = false;
 			Thread.currentThread().setName(previousName);
 			throw t;
 		}
@@ -186,10 +196,10 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 				long start = System.nanoTime();
 				broadcaster.broadcast(next).get();
 				long duration = System.nanoTime() - start;
-				LOG.trace("Broadcast took {} nanoseconds for {} elements", duration, next.size());
+				LOG.trace("Broadcast took {} nanoseconds for {} elements, still {} elements", duration, next.size(), nextCandidates.size());
 
 			} else {
-				LOG.trace("No next candidates to broadcast");
+				//LOG.trace("No next candidates to broadcast");
 				Thread.sleep(1);
 			}
 		}
@@ -199,6 +209,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	public void stateChanged(CuratorFramework client, ConnectionState newState) {
 		if (newState == ConnectionState.SUSPENDED || newState == ConnectionState.LOST) {
 			LOG.error("At {}: State changed to {}", owningTaskName, newState);
+			this.isLeader = false;
 			throw new CancelLeadershipException();
 		}
 	}
