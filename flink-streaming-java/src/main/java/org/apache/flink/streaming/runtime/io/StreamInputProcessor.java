@@ -214,9 +214,9 @@ public class StreamInputProcessor<IN> {
 
 				KafkaOrderBroadcaster broadcaster = new KafkaOrderBroadcaster(topic, kafkaServer);
 				f = CuratorFrameworkFactory.newClient(executionConfig.getZkServer(), 
-					1_000, // session timeout
-					1_000, // connection timeout
-					new ExponentialBackoffRetry(1_000, 3));
+					100, // session timeout
+					100, // connection timeout
+					new ExponentialBackoffRetry(100, 0));
 				f.start();
 
 				merger = new KafkaReplication(numLogicalChannels, broadcaster, kafkaBatchSize, executionConfig.getKafkaTimeout(), topic, f, kafkaServer, metrics);
