@@ -45,7 +45,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	private volatile boolean stopProcessor;
 	private List<AutoCloseable> closables = new LinkedList<>();
 
-	private volatile boolean isLeader;
+	private LeaderSelector leaderSelector;
 
 	@SuppressWarnings("unchecked")
 	public KafkaReplication(
@@ -99,18 +99,16 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 
 		LOG.info("Setup kafka consumer to read from topic {}", topic);
 
+		LeaderSelector leaderSelector = new LeaderSelector(f, "/flink/" + topic, this);
+		leaderSelector.autoRequeue();
+		leaderSelector.start();
+		this.leaderSelector = leaderSelector;
+		this.closables.add(leaderSelector);
+
 		Thread processor = new Thread(this::pollOrderings, "active-replication-" + owningTaskName);
 		processor.setContextClassLoader(originClassLoader);
 		Thread.currentThread().setContextClassLoader(originClassLoader);
 		processor.start();
-
-		LeaderSelector leaderSelector = new LeaderSelector(f, "/flink/" + topic, this);
-		leaderSelector.autoRequeue();
-		leaderSelector.start();
-
-		this.closables.add(leaderSelector);
-
-		this.isLeader = false;
 	}
 
 
@@ -144,7 +142,7 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 					try {
 						Enqueued elem = queues[chan].take();
 						// remove corresponding next candidate if not the leader
-						if (!isLeader) {
+						if (!this.leaderSelector.hasLeadership()) {
 							this.nextCandidates.take();
 						}
 						if (hasNext()) {
@@ -170,7 +168,6 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	@Override
 	public void takeLeadership(CuratorFramework curatorFramework) throws Exception {
 		LOG.info("took leadership");
-		this.isLeader = true;
 
 		String previousName = Thread.currentThread().getName();
 		Thread.currentThread().setName("leader-for-" + owningTaskName);
@@ -179,7 +176,6 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 		} catch (Throwable t) {
 			LOG.warn("Lost leadership because of {}", t);
 			this.hasFailed = true;
-			this.isLeader = false;
 			Thread.currentThread().setName(previousName);
 			throw t;
 		}
@@ -209,7 +205,6 @@ public class KafkaReplication extends Chainable implements LeaderSelectorListene
 	public void stateChanged(CuratorFramework client, ConnectionState newState) {
 		if (newState == ConnectionState.SUSPENDED || newState == ConnectionState.LOST) {
 			LOG.error("At {}: State changed to {}", owningTaskName, newState);
-			this.isLeader = false;
 			throw new CancelLeadershipException();
 		}
 	}
