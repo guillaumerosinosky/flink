@@ -180,6 +180,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private boolean isIdleMarksEnabled = false;
 
+	private boolean isLiveRobinEnabled = false;
+
 	private OrderingAlgorithm orderingAlgorithm = OrderingAlgorithm.BIAS_THREADED;
 
 	private int kafkaBatchSize = 1000;
@@ -917,6 +919,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 		this.isIdleMarksEnabled = true;
 	}
 
+	public boolean isLiveRobinEnabled() {
+		return this.isLiveRobinEnabled;
+	}
+
+	public void enableLiveRobin() {
+		this.isLiveRobinEnabled = true;
+	}	
+
 	public long getIdleMarksInterval() {
 		return this.idleMarksInterval;
 	}
@@ -1040,7 +1050,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	}
 
 	public enum OrderingAlgorithm {
-		BIAS, BIAS_THREADED, LEADER, BETTER_BIAS, LEADER_KAFKA, NO_ORDERING
+		BIAS, BIAS_THREADED, LEADER, BETTER_BIAS, LEADER_KAFKA, NO_ORDERING, LIVE_ROBIN
 	}
 
 

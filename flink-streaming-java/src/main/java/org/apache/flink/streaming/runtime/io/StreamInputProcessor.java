@@ -47,6 +47,7 @@ import org.apache.flink.streaming.runtime.io.replication.Deduplication;
 import org.apache.flink.streaming.runtime.io.replication.KafkaOrderBroadcaster;
 import org.apache.flink.streaming.runtime.io.replication.KafkaReplication;
 import org.apache.flink.streaming.runtime.io.replication.LeaderBasedReplication;
+import org.apache.flink.streaming.runtime.io.replication.LiveRobinAlgorithm;
 import org.apache.flink.streaming.runtime.io.replication.LogicalChannelMapper;
 import org.apache.flink.streaming.runtime.io.replication.OneInputStreamOperatorAdapter;
 import org.apache.flink.streaming.runtime.io.replication.Utils;
@@ -203,6 +204,9 @@ public class StreamInputProcessor<IN> {
 				break;
 			case BETTER_BIAS:
 				merger = new BetterBiasAlgorithm(numLogicalChannels);
+				break;
+			case LIVE_ROBIN:
+				merger = new LiveRobinAlgorithm(numLogicalChannels);
 				break;
 			case NO_ORDERING:
 				merger = new NoOrder();

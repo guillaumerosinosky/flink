@@ -91,6 +91,15 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 				lockingObject
 			);
 		}
+		LiveRobinHeartbeatEmitter<OUT> liveRobinHeartbeatEmitter = null;
+		if (getExecutionConfig().isLiveRobinEnabled()) {
+			LOG.info(String.format("Starting live robin heartbeat emitter with interval %dms", 100));
+			liveRobinHeartbeatEmitter = new LiveRobinHeartbeatEmitter<>(
+				collector,
+				100,
+				lockingObject
+			);
+		}
 
 		final long watermarkInterval = getRuntimeContext().getExecutionConfig().getAutoWatermarkInterval();
 
@@ -120,6 +129,9 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			}
 			if (idleMarksEmitter != null) {
 				idleMarksEmitter.close();
+			}
+			if (liveRobinHeartbeatEmitter != null) {
+				liveRobinHeartbeatEmitter.close();
 			}
 		}
 	}
@@ -153,6 +165,37 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 	 */
 	protected boolean isCanceledOrStopped() {
 		return canceledOrStopped;
+	}
+	private static class LiveRobinHeartbeatEmitter<OUT> {
+
+		private final ScheduledFuture<?> liveRobinHeartbeatTimer;
+		private long currentEpoch = 0;
+
+		public LiveRobinHeartbeatEmitter(final Output<StreamRecord<OUT>> output,
+		final long boundedIdlenessInterval,
+		final Object lock
+		) {
+			this.liveRobinHeartbeatTimer = Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
+				try {
+					synchronized (lock) {
+						EndOfEpochMarker marker = new EndOfEpochMarker();
+
+						marker.setPreviousTimestamp(0);
+						marker.setCurrentTimestamp(0);
+						marker.setEpoch(currentEpoch);
+						output.emitBoundedDelayMarker(marker);
+						currentEpoch++;
+					}
+				} catch (Throwable t) {
+					LOG.warn("Error while emitting bounded delay marker. ", t);
+				}
+			}, 0L, boundedIdlenessInterval, TimeUnit.MILLISECONDS);
+		}
+
+		public void close() {
+			this.liveRobinHeartbeatTimer.cancel(true);
+		}			
+		
 	}
 
 	private static class IdleMarksEmitter<OUT> {
