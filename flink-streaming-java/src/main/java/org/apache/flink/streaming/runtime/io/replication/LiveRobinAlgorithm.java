@@ -13,7 +13,7 @@ public class LiveRobinAlgorithm extends Chainable {
     private long highestHeartbeat = 0;
     private long currentHeartbeat = 0;
     private long[] heartbeatAtChannel;
-    private int nextQueueToPoll;
+    private int currentQueuePolling;
     private int numProducers;
 
     private Map<Integer, LinkedBlockingQueue<StreamElement>> messages;
@@ -23,7 +23,7 @@ public class LiveRobinAlgorithm extends Chainable {
         for (int i = 0; i < numProducers; i++) {
             this.heartbeatAtChannel[i] = 0;
         }
-        this.nextQueueToPoll = 0;
+        this.currentQueuePolling = 0;
         this.numProducers = numProducers;
 		this.messages = new HashMap<>();
         for (int i = 0; i < numProducers; i++) {
@@ -40,37 +40,39 @@ public class LiveRobinAlgorithm extends Chainable {
     public void processingLoop() throws Exception {
         boolean processing = true;
         while (processing) {
-            StreamElement nextElement = messages.get(this.nextQueueToPoll).poll();
+            StreamElement nextElement = messages.get(this.currentQueuePolling).poll();
             if (nextElement == null) {
-                LOG.debug("No more elements to poll on channel {}", this.nextQueueToPoll);
                 return;
             }
             
             if (nextElement.isEndOfEpochMarker()) { // read HB
                 if (nextElement.getEpoch() > highestHeartbeat) {  // first?
                     if (this.hasNext()) { // propagate
-                        LOG.debug("Heartbeat propagation (epoch {})", this.currentHeartbeat);
-                        this.getNext().accept(nextElement, this.nextQueueToPoll);
+                        //LOG.debug("Heartbeat propagation (epoch {})", this.currentHeartbeat);
+                        LOG.info("Heartbeat,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asEndOfEpochMarker().toString());
+                        this.getNext().accept(nextElement, this.currentQueuePolling);
                         highestHeartbeat = nextElement.getEpoch();
                     }
                 }
-                heartbeatAtChannel[this.nextQueueToPoll] = nextElement.getEpoch();
-                long lastProducers = this.currentHeartbeat;
-                for (int i = 0; i < numProducers; i++) {
-                    if (heartbeatAtChannel[i] == this.currentHeartbeat) {
-                        this.nextQueueToPoll = i;
+                heartbeatAtChannel[this.currentQueuePolling] = nextElement.getEpoch();
+                long lastProducers = this.numProducers;
+                for (int i = numProducers - 1; i > 0; i--) {
+                    int channel = (this.currentQueuePolling + i) % numProducers;
+                    if (heartbeatAtChannel[channel] >= this.currentHeartbeat) {
                         lastProducers--;
+                    } else {
+                        this.currentQueuePolling = channel;
                     }
                 }
-                if (lastProducers <= 0) {
-                    LOG.debug("All heartbeats {} processed, increase heartbeat to {}", this.currentHeartbeat, this.currentHeartbeat + 1);
+                if (lastProducers == 1) {
+                    LOG.debug("All heartbeats {} processed, increase current heartbeat to {}", this.currentHeartbeat, this.currentHeartbeat + 1);
                     this.currentHeartbeat++;
                 }
 
             } else {
                 if (this.hasNext()) {
-                    LOG.debug("Processing of element (epoch {})", this.currentHeartbeat);
-                    this.getNext().accept(nextElement, this.nextQueueToPoll);
+                    LOG.info("Element,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asRecord().toString());
+                    this.getNext().accept(nextElement, this.currentQueuePolling);
                 }
             }
         }            
