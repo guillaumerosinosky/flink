@@ -30,11 +30,20 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Properties;
+import java.util.UUID;
 /**
  * {@link StreamOperator} for streaming sources.
  *
@@ -91,15 +100,26 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 				lockingObject
 			);
 		}
-		LiveRobinHeartbeatEmitter<OUT> liveRobinHeartbeatEmitter = null;
+		
+		LiveRobinKafkaHeartbeatEmitter<OUT> liveRobinKafkaHeartbeatEmitter = null;
+		LiveRobinTimerHeartbeatEmitter<OUT> liveRobinTimerHeartbeatEmitter = null;
 		if (getExecutionConfig().isLiveRobinEnabled()) {
-			LOG.info(String.format("Starting live robin heartbeat emitter with interval %dms", 100));
-			liveRobinHeartbeatEmitter = new LiveRobinHeartbeatEmitter<>(
-				collector,
-				100,
-				lockingObject
-			);
+			if (getExecutionConfig().getKafkaServer() != "") {
+				LOG.info(String.format("Starting live robin Kafka heartbeat emitter on Kafka server %s ", getExecutionConfig().getKafkaServer()));
+				liveRobinKafkaHeartbeatEmitter = new LiveRobinKafkaHeartbeatEmitter<>(
+					collector,
+					getExecutionConfig().getKafkaServer(),
+					"liverobin-heartbeats");
+			} else {
+				LOG.info(String.format("Starting live robin heartbeat emitter with interval %dms", 100));
+				liveRobinTimerHeartbeatEmitter = new LiveRobinTimerHeartbeatEmitter<>(
+					collector,
+					100,
+					lockingObject
+				);
+			}
 		}
+
 
 		final long watermarkInterval = getRuntimeContext().getExecutionConfig().getAutoWatermarkInterval();
 
@@ -130,8 +150,12 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			if (idleMarksEmitter != null) {
 				idleMarksEmitter.close();
 			}
-			if (liveRobinHeartbeatEmitter != null) {
-				liveRobinHeartbeatEmitter.close();
+			if (liveRobinTimerHeartbeatEmitter != null) {
+				liveRobinTimerHeartbeatEmitter.close();
+			}
+
+			if (liveRobinKafkaHeartbeatEmitter != null) {
+				liveRobinKafkaHeartbeatEmitter.close();
 			}
 		}
 	}
@@ -166,12 +190,65 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 	protected boolean isCanceledOrStopped() {
 		return canceledOrStopped;
 	}
-	private static class LiveRobinHeartbeatEmitter<OUT> {
+
+	private static class LiveRobinKafkaHeartbeatEmitter<OUT> {
+		private final KafkaConsumer<String, String> consumer;
+		Thread processor;
+		public LiveRobinKafkaHeartbeatEmitter(final Output<StreamRecord<OUT>> output,
+		final String kafkaServer,
+		final String topic
+		) {
+			Properties props = new Properties();
+			String uuid = UUID.randomUUID().toString();
+
+			props.put("bootstrap.servers", kafkaServer);
+			props.put("group.id", uuid);
+			props.put("enable.auto.commit", "true");
+			props.put("auto.commit.interval.ms", "1000");
+			props.put("auto.offset.reset", "earliest");
+			props.put("key.deserializer", StringDeserializer.class.getName());
+			props.put("value.deserializer", StringDeserializer.class.getName());
+			props.put("batchSize", 500);
+			
+			ClassLoader originClassLoader = Thread.currentThread().getContextClassLoader();
+			Thread.currentThread().setContextClassLoader(null);
+			consumer = new KafkaConsumer<String, String>(props);
+			consumer.subscribe(Arrays.asList(topic));
+
+			processor = new Thread("heartbeat-processor-" + uuid) {
+				public void run() {
+					boolean running = true;
+					while (running) {
+						ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
+
+						for (ConsumerRecord<String, String> r : records) {
+							LOG.trace("Processing {} ", r.value());
+							EndOfEpochMarker marker = new EndOfEpochMarker();
+		
+							marker.setPreviousTimestamp(0);
+							marker.setCurrentTimestamp(0);
+							marker.setEpoch(new Long(r.value()));
+							output.emitBoundedDelayMarker(marker);					
+						}
+					}
+				}
+			};
+			processor.setContextClassLoader(originClassLoader);
+			Thread.currentThread().setContextClassLoader(originClassLoader);			
+			processor.start();
+		}
+
+		public void close() {
+			this.processor.interrupt();
+		}		
+	}
+
+	private static class LiveRobinTimerHeartbeatEmitter<OUT> {
 
 		private final ScheduledFuture<?> liveRobinHeartbeatTimer;
 		private long currentEpoch = 0;
 
-		public LiveRobinHeartbeatEmitter(final Output<StreamRecord<OUT>> output,
+		public LiveRobinTimerHeartbeatEmitter(final Output<StreamRecord<OUT>> output,
 		final long boundedIdlenessInterval,
 		final Object lock
 		) {

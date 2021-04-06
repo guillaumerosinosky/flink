@@ -42,18 +42,20 @@ public class LiveRobinAlgorithm extends Chainable {
         while (processing) {
             StreamElement nextElement = messages.get(this.currentQueuePolling).poll();
             if (nextElement == null) {
-                return;
+                processing = false;
+                break;
             }
             
             if (nextElement.isEndOfEpochMarker()) { // read HB
+                LOG.trace("Heartbeat received,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asEndOfEpochMarker().toString());
                 if (nextElement.getEpoch() > highestHeartbeat) {  // first?
                     if (this.hasNext()) { // propagate
                         //LOG.debug("Heartbeat propagation (epoch {})", this.currentHeartbeat);
-                        LOG.info("Heartbeat,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asEndOfEpochMarker().toString());
+                        LOG.trace("Heartbeat propagation,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asEndOfEpochMarker().toString());
                         this.getNext().accept(nextElement, this.currentQueuePolling);
                         highestHeartbeat = nextElement.getEpoch();
                     }
-                }
+                } 
                 heartbeatAtChannel[this.currentQueuePolling] = nextElement.getEpoch();
                 long lastProducers = this.numProducers;
                 for (int i = numProducers - 1; i > 0; i--) {
@@ -71,7 +73,7 @@ public class LiveRobinAlgorithm extends Chainable {
 
             } else {
                 if (this.hasNext()) {
-                    LOG.info("Element,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asRecord().toString());
+                    LOG.trace("Element propagation,{},{},{}", this.currentHeartbeat, this.currentQueuePolling, nextElement.asRecord().toString());
                     this.getNext().accept(nextElement, this.currentQueuePolling);
                 }
             }
