@@ -109,7 +109,8 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 				liveRobinKafkaHeartbeatEmitter = new LiveRobinKafkaHeartbeatEmitter<>(
 					collector,
 					getExecutionConfig().getKafkaServer(),
-					"liverobin-heartbeats");
+					"liverobin-heartbeats",
+					lockingObject);
 			} else {
 				LOG.info(String.format("Starting live robin heartbeat emitter with interval %dms", 100));
 				liveRobinTimerHeartbeatEmitter = new LiveRobinTimerHeartbeatEmitter<>(
@@ -196,7 +197,8 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 		Thread processor;
 		public LiveRobinKafkaHeartbeatEmitter(final Output<StreamRecord<OUT>> output,
 		final String kafkaServer,
-		final String topic
+		final String topic,
+		final Object lock
 		) {
 			Properties props = new Properties();
 			String uuid = UUID.randomUUID().toString();
@@ -220,15 +222,17 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 					boolean running = true;
 					while (running) {
 						ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
-
+						
 						for (ConsumerRecord<String, String> r : records) {
 							LOG.trace("Processing {} ", r.value());
-							EndOfEpochMarker marker = new EndOfEpochMarker();
+							synchronized (lock) {
+								EndOfEpochMarker marker = new EndOfEpochMarker();
 		
-							marker.setPreviousTimestamp(0);
-							marker.setCurrentTimestamp(0);
-							marker.setEpoch(new Long(r.value()));
-							output.emitBoundedDelayMarker(marker);					
+								marker.setPreviousTimestamp(0);
+								marker.setCurrentTimestamp(0);
+								marker.setEpoch(new Long(r.value()));
+								output.emitBoundedDelayMarker(marker);					
+							}
 						}
 					}
 				}
