@@ -211,6 +211,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			props.put("key.deserializer", StringDeserializer.class.getName());
 			props.put("value.deserializer", StringDeserializer.class.getName());
 			props.put("batchSize", 500);
+			props.put("max.poll.records", 1);
 			
 			ClassLoader originClassLoader = Thread.currentThread().getContextClassLoader();
 			Thread.currentThread().setContextClassLoader(null);
